@@ -1,6 +1,9 @@
 import * as store from '../store.js';
 import { pesos, esc } from '../utils.js';
 
+const VENTAS_VISIBLES = 30;  // cuántas ventas recientes muestra la lista
+const PAGO = { efectivo: 'Efectivo', transferencia: 'Transferencia', cc: 'Cuenta corriente' };
+
 let raiz;
 
 export function iniciarResumen(contenedor) {
@@ -9,6 +12,11 @@ export function iniciarResumen(contenedor) {
   // El formulario se dibuja una sola vez, así no se borra lo que estás escribiendo
   raiz.innerHTML = `
     <div id="r-stats"></div>
+
+    <div class="card">
+      <h3>Últimas ventas</h3>
+      <ul id="r-ventas" class="lista lista-ventas"></ul>
+    </div>
 
     <div class="card">
       <h3>Productos más vendidos</h3>
@@ -52,8 +60,32 @@ function renderResumen() {
       <div class="card-stat"><span>Histórico</span><strong>${pesos(r.totalHistorico)}</strong></div>
     </div>`;
 
+  raiz.querySelector('#r-ventas').innerHTML =
+    store.ultimasVentas(VENTAS_VISIBLES).map(filaVenta).join('') || '<li class="vacio">Sin ventas todavía</li>';
+
   const filas = r.ranking.map(x => `<li>${esc(x.nombre)} · × ${x.cantidad} · ${pesos(x.total)}</li>`);
   raiz.querySelector('#r-ranking').innerHTML = filas.join('') || '<li class="vacio">Sin ventas todavía</li>';
+}
+
+// Una venta: monto, medio de pago (con el cliente si es cuenta corriente) y fecha y hora
+function filaVenta(v) {
+  const pago = PAGO[v.medioPago] ?? PAGO.efectivo;
+  const cliente = v.medioPago === 'cc'
+    ? store.getClientes().find(c => c.id === v.clienteId)?.nombre
+    : null;
+  const detalle = cliente ? `${pago} · ${esc(cliente)}` : pago;
+
+  return `
+    <li>
+      <span><strong>${pesos(v.total)}</strong> <span class="pago">${detalle}</span></span>
+      <small>${fechaHora(v.fecha)}</small>
+    </li>`;
+}
+
+function fechaHora(iso) {
+  return new Date(iso).toLocaleString('es-AR', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
 }
 
 async function guardarProducto(e) {

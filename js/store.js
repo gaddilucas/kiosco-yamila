@@ -16,7 +16,6 @@ function avisarError(error) {
   alert('No se pudo guardar. Revisá la conexión e intentá de nuevo.');
 }
 
-// Redondeo a pesos enteros para el ticket
 const redondear = n => Math.round(n);
 
 // ---------- Carga desde Supabase ----------
@@ -42,6 +41,7 @@ export async function cargarDatos() {
     id: v.id,
     fecha: v.fecha,
     total: Number(v.total),
+    medioPago: v.medio_pago,
     clienteId: v.cliente_id,
     items: (v.venta_items || []).map(i => ({
       id: i.producto_id,
@@ -96,15 +96,19 @@ export function vaciarCarrito() {
 }
 
 // ---------- Ventas ----------
-export async function cobrarVenta({ clienteId = null } = {}) {
-  if (!carrito.length || cobrando) return;
+// medioPago: 'efectivo' | 'transferencia' | 'cc'. Si es 'cc' hace falta clienteId.
+// Devuelve la venta guardada, o null si no se pudo cobrar.
+export async function cobrarVenta({ medioPago = 'efectivo', clienteId = null } = {}) {
+  if (!carrito.length || cobrando) return null;
+  if (medioPago === 'cc' && !clienteId) return null;
   cobrando = true;
 
   const venta = {
     id: crypto.randomUUID(),
     fecha: new Date().toISOString(),
     total: totalCarrito(),
-    cliente_id: clienteId,
+    medio_pago: medioPago,
+    cliente_id: medioPago === 'cc' ? clienteId : null,
   };
   const items = carrito.map(i => ({
     producto_id: i.id,
@@ -117,9 +121,9 @@ export async function cobrarVenta({ clienteId = null } = {}) {
   try {
     await db.insertarVenta(venta, items);
 
-    if (clienteId) {
+    if (venta.cliente_id) {
       await db.insertarMovimiento({
-        cliente_id: clienteId, tipo: 'cargo', monto: venta.total, nota: 'Venta', fecha: venta.fecha,
+        cliente_id: venta.cliente_id, tipo: 'cargo', monto: venta.total, nota: 'Venta', fecha: venta.fecha,
       });
     }
 
@@ -128,7 +132,8 @@ export async function cobrarVenta({ clienteId = null } = {}) {
       id: venta.id,
       fecha: venta.fecha,
       total: venta.total,
-      clienteId,
+      medioPago,
+      clienteId: venta.cliente_id,
       items: items.map(i => ({
         id: i.producto_id,
         nombre: i.nombre,
@@ -137,18 +142,27 @@ export async function cobrarVenta({ clienteId = null } = {}) {
         subtotal: i.subtotal,
       })),
     });
-    if (clienteId) {
-      datos.clientesCC.find(c => c.id === clienteId)?.movimientos.push({
+    if (venta.cliente_id) {
+      datos.clientesCC.find(c => c.id === venta.cliente_id)?.movimientos.push({
         tipo: 'cargo', monto: venta.total, nota: 'Venta', fecha: venta.fecha,
       });
     }
     carrito.length = 0;
+    return venta;
   } catch (e) {
     avisarError(e);
+    return null;
   } finally {
     cobrando = false;
     notificar();
   }
+}
+
+// Ventas más recientes primero
+export function ultimasVentas(n) {
+  return [...datos.ventas]
+    .sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
+    .slice(0, n);
 }
 
 // Ranking de productos vendidos (para la barra por defecto y el resumen)
@@ -214,7 +228,7 @@ export function resumen() {
     totalHoy,
     cantidadHoy: ventasHoy.length,
     ticketPromedio: ventasHoy.length ? Math.round(totalHoy / ventasHoy.length) : 0,
-    fiadoHoy: ventasHoy.filter(v => v.clienteId).reduce((s, v) => s + v.total, 0),
+    fiadoHoy: ventasHoy.filter(v => v.medioPago === 'cc').reduce((s, v) => s + v.total, 0),
     totalHistorico: datos.ventas.reduce((s, v) => s + v.total, 0),
     deudaCC: datos.clientesCC.reduce((s, c) => s + Math.max(saldoCliente(c), 0), 0),
     ranking: rankingProductos().slice(0, 5),

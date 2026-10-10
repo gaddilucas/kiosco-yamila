@@ -216,3 +216,59 @@ h4 { margin: 14px 0 6px; }
 /* ---------- Formulario de productos ---------- */
 .columna { display: flex; flex-direction: column; gap: 10px; }
 .columna .fila { margin: 0; }
+/* ---------- Medios de pago ---------- */
+.medios {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.btn-medio {
+  padding: 12px 6px;
+  border: 2px solid var(--borde);
+  border-radius: 10px;
+  background: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-medio.activo {
+  border-color: var(--primario);
+  background: #ecfdf3;
+  color: var(--primario-oscuro);
+}
+
+/* ---------- Búsqueda de cuenta corriente ---------- */
+.cc-bloque { margin-bottom: 10px; }
+.cc-bloque input { width: 100%; margin-bottom: 8px; }
+.cc-chip {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  border-radius: 10px;
+  background: #ecfdf3;
+}
+.barra-clientes {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.tarjeta-cliente {
+  padding: 12px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--card);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .08);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.ticket-acciones .btn-primario:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+/* ---------- Resumen: últimas ventas ---------- */
+.lista-ventas li { flex-wrap: wrap; }
+.lista-ventas small { color: var(--gris); width: 100%; }
+.pago { font-size: .85rem; color: var(--gris); margin-left: 4px; }

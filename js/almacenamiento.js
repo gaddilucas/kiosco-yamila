@@ -22,7 +22,7 @@ export async function cargarTodo() {
     sb.from('productos').select('id, nombre, precio, tipo').order('nombre'),
     sb.from('clientes').select('id, nombre, movimientos(tipo, monto, nota, fecha)').order('creado_en'),
     sb.from('ventas')
-      .select('id, fecha, total, cliente_id, venta_items(producto_id, nombre, precio, cantidad, subtotal)')
+    .select('id, fecha, total, medio_pago, cliente_id, venta_items(producto_id, nombre, precio, cantidad, subtotal)')
       .order('fecha'),
   ]);
   if (productos.error) throw productos.error;

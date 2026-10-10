@@ -4,10 +4,18 @@ import { pesos, esc } from '../utils.js';
 
 const CANTIDAD_BARRA = 4;
 const KILOS_RAPIDOS = [0.1, 0.25, 0.5, 1];
+const MEDIOS = [
+  { id: 'efectivo', texto: 'Efectivo' },
+  { id: 'transferencia', texto: 'Transferencia' },
+  { id: 'cc', texto: 'Cuenta corriente' },
+];
 
 let raiz;
-let textoBusqueda = '';
-let productoKg = null;  // producto por kilo abierto en el diálogo
+let textoBusqueda = '';      // búsqueda de productos
+let productoKg = null;       // producto por kilo abierto en el diálogo
+let medioPago = 'efectivo';
+let clienteId = null;        // cuenta corriente elegida (solo si medioPago es 'cc')
+let textoBusquedaCC = '';    // búsqueda de cuentas corrientes
 
 export function iniciarVentas(contenedor) {
   raiz = contenedor;
@@ -27,8 +35,19 @@ export function iniciarVentas(contenedor) {
     <div class="ticket">
       <ul id="v-ticket" class="ticket-lista"></ul>
       <div class="ticket-total">Total <strong id="v-total">$ 0</strong></div>
+
+      <p class="etiqueta">Medio de pago</p>
+      <div id="v-medios" class="medios"></div>
+
+      <div id="v-cc" class="cc-bloque" hidden>
+        <div id="v-cc-elegido"></div>
+        <input id="v-cc-buscar" type="search" placeholder="Buscar cuenta corriente..." autocomplete="off">
+        <div id="v-cc-resultados" class="barra-clientes"></div>
+      </div>
+
+      <p id="v-error" class="deuda"></p>
+
       <div class="ticket-acciones">
-        <select id="v-cliente"></select>
         <button id="v-cobrar" class="btn-primario">Cobrar</button>
         <button id="v-vaciar" class="btn-secundario">Vaciar</button>
       </div>
@@ -56,6 +75,12 @@ export function iniciarVentas(contenedor) {
     textoBusqueda = e.target.value;
     renderVentas();
   });
+
+  raiz.querySelector('#v-cc-buscar').addEventListener('input', e => {
+    textoBusquedaCC = e.target.value;
+    renderCC();
+  });
+
   raiz.querySelector('#v-cobrar').addEventListener('click', cobrar);
   raiz.querySelector('#v-vaciar').addEventListener('click', () => store.vaciarCarrito());
 
@@ -88,13 +113,67 @@ function onClick(e) {
   }
 
   const btnQuitar = e.target.closest('[data-quitar]');
-  if (btnQuitar) store.quitarDelCarrito(Number(btnQuitar.dataset.quitar));
+  if (btnQuitar) {
+    store.quitarDelCarrito(Number(btnQuitar.dataset.quitar));
+    return;
+  }
+
+  const btnPago = e.target.closest('[data-pago]');
+  if (btnPago) {
+    elegirMedio(btnPago.dataset.pago);
+    return;
+  }
+
+  const btnCliente = e.target.closest('[data-cliente-id]');
+  if (btnCliente) {
+    elegirCliente(btnCliente.dataset.clienteId);
+    return;
+  }
+
+  if (e.target.closest('#v-cc-quitar')) {
+    clienteId = null;
+    renderVentas();
+  }
 }
 
 function limpiarBusqueda() {
   textoBusqueda = '';
   raiz.querySelector('#v-buscar').value = '';
   renderVentas();
+}
+
+// ---------- Medio de pago y cuenta corriente ----------
+function elegirMedio(id) {
+  medioPago = id;
+  if (id !== 'cc') clienteId = null;
+  textoBusquedaCC = '';
+  raiz.querySelector('#v-cc-buscar').value = '';
+  renderVentas();
+}
+
+function elegirCliente(id) {
+  clienteId = id;
+  textoBusquedaCC = '';
+  raiz.querySelector('#v-cc-buscar').value = '';
+  renderVentas();
+}
+
+function reiniciarPago() {
+  medioPago = 'efectivo';
+  clienteId = null;
+  textoBusquedaCC = '';
+  raiz.querySelector('#v-cc-buscar').value = '';
+}
+
+async function cobrar() {
+  const venta = await store.cobrarVenta({
+    medioPago,
+    clienteId: medioPago === 'cc' ? clienteId : null,
+  });
+  if (venta) {
+    reiniciarPago();
+    renderVentas();
+  }
 }
 
 // ---------- Productos por kilo ----------
@@ -139,13 +218,6 @@ function leerKilos(texto) {
   return kilos > 0 ? kilos : null;
 }
 
-// ---------- Cobro ----------
-function cobrar() {
-  if (!store.getCarrito().length) return;
-  const clienteId = raiz.querySelector('#v-cliente').value || null;
-  store.cobrarVenta({ clienteId });
-}
-
 // ---------- Render ----------
 function renderVentas() {
   if (!raiz) return;
@@ -162,25 +234,73 @@ function renderVentas() {
     : '<p class="vacio">Sin coincidencias</p>';
 
   raiz.querySelector('#v-grilla').innerHTML = catalogo.map(tarjetaProducto).join('');
-
   raiz.querySelector('#v-ticket').innerHTML =
     store.getCarrito().map(filaTicket).join('') || '<li class="vacio">Ticket vacío</li>';
-
   raiz.querySelector('#v-total').textContent = pesos(store.totalCarrito());
-  renderSelectorClientes();
+
+  renderMedios();
+  renderCC();
+  renderCobro();
 }
 
-function renderSelectorClientes() {
-  const sel = raiz.querySelector('#v-cliente');
-  const valorActual = sel.value;
-  sel.innerHTML = '<option value="">Cobro en mostrador</option>' +
-    store.getClientes()
-      .map(c => `<option value="${c.id}">Fiar a: ${esc(c.nombre)}</option>`)
-      .join('');
-  sel.value = valorActual;
+function renderMedios() {
+  raiz.querySelector('#v-medios').innerHTML = MEDIOS.map(m => `
+    <button class="btn-medio ${m.id === medioPago ? 'activo' : ''}" data-pago="${m.id}">${m.texto}</button>`
+  ).join('');
+  raiz.querySelector('#v-cc').hidden = medioPago !== 'cc';
 }
 
-// Tarjeta solo con nombre y precio (por kilo agrega "/kg")
+function renderCC() {
+  if (medioPago !== 'cc') return;
+
+  const clientes = store.getClientes();
+  const elegido = clientes.find(c => c.id === clienteId);
+  const elegidoEl = raiz.querySelector('#v-cc-elegido');
+  const buscar = raiz.querySelector('#v-cc-buscar');
+  const resultados = raiz.querySelector('#v-cc-resultados');
+
+  // Ya hay cuenta elegida: muestra el chip y oculta la búsqueda
+  if (elegido) {
+    const saldo = store.saldoCliente(elegido);
+    elegidoEl.innerHTML = `
+      <div class="cc-chip">
+        <span>${esc(elegido.nombre)} · debe <strong class="${saldo > 0 ? 'deuda' : ''}">${pesos(saldo)}</strong></span>
+        <button id="v-cc-quitar" class="quitar" aria-label="Quitar cuenta">✕</button>
+      </div>`;
+    buscar.hidden = true;
+    resultados.innerHTML = '';
+    return;
+  }
+
+  elegidoEl.innerHTML = '';
+  buscar.hidden = false;
+
+  if (!clientes.length) {
+    resultados.innerHTML = '<p class="vacio">Todavía no hay cuentas corrientes. Creá una en la pestaña CC.</p>';
+    return;
+  }
+
+  const consulta = textoBusquedaCC.trim();
+  const lista = consulta
+    ? buscarProductos(consulta, clientes, CANTIDAD_BARRA)
+    : [...clientes].sort((a, b) => a.nombre.localeCompare(b.nombre)).slice(0, CANTIDAD_BARRA);
+
+  resultados.innerHTML = lista.length
+    ? lista.map(c => `<button class="tarjeta-cliente" data-cliente-id="${c.id}">${esc(c.nombre)}</button>`).join('')
+    : '<p class="vacio">Sin coincidencias</p>';
+}
+
+// Cobrar queda apagado si no hay productos o si es cuenta corriente sin cliente elegido
+function renderCobro() {
+  const error = raiz.querySelector('#v-error');
+  const boton = raiz.querySelector('#v-cobrar');
+  const hayVenta = store.getCarrito().length > 0;
+  const faltaCliente = medioPago === 'cc' && !clienteId;
+
+  error.textContent = hayVenta && faltaCliente ? 'Elegí una cuenta corriente para cobrar' : '';
+  boton.disabled = !hayVenta || faltaCliente;
+}
+
 function tarjetaProducto(p) {
   const sufijo = p.tipo === 'kg' ? '/kg' : '';
   return `
