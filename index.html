@@ -2,139 +2,42 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Kiosco & Verdulería - Supabase</title>
-  <link rel="stylesheet" href="style.css">
-  <!-- Libreria Oficial de Supabase -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kiosco</title>
+  <link rel="stylesheet" href="css/estilos.css">
 </head>
 <body>
-  <header>
-    <h1>Kiosco & Verdulería</h1>
-    <span class="muted" id="today"></span>
-  </header>
-  
-  <nav>
-    <button class="tab active" data-tab="vender">Vender</button>
-    <button class="tab" data-tab="stock">Stock / Productos</button>
-    <button class="tab" data-tab="gastos">Gastos</button>
-    <button class="tab" data-tab="resumen">Resumen</button>
-  </nav>
-  
-  <main>
-    <!-- VENDER -->
-    <section id="tab-vender">
-      <div class="search-box">
-        <input type="text" id="search-vender" placeholder="Buscar producto por nombre..." autocomplete="off">
-        <button class="clear-btn" id="clear-search-vender">✕</button>
-      </div>
-      <div class="grid" id="product-grid"></div>
-      <div class="card" style="margin-top:14px">
-        <strong>Carrito</strong>
-        <div id="cart"></div>
-        <div class="row" style="margin-top:12px">
-          <div>
-            <label for="pay">Medio de pago</label>
-            <select id="pay">
-              <option value="efectivo">Efectivo</option>
-              <option value="transferencia">Transferencia</option>
-              <option value="modo">MODO</option>
-              <option value="tarjeta">Tarjeta</option>
-              <option value="otro">Otro</option>
-            </select>
-          </div>
-          <div style="text-align:right">
-            <div class="muted">Total</div>
-            <div class="big" id="cart-total">$0</div>
-          </div>
-        </div>
-        <div class="row" style="margin-top:10px">
-          <button id="clear-cart">Vaciar</button>
-          <button class="primary" id="charge" style="flex:1">Cobrar</button>
-        </div>
-      </div>
-    </section>
 
-    <!-- STOCK -->
-    <section id="tab-stock" class="hidden">
-      <div class="card">
-        <strong>Nuevo producto / Verdura (Si ya existe, se actualiza)</strong>
-        <div class="row" style="margin-top:10px">
-          <div>
-            <label for="p-type">Venta por</label>
-            <select id="p-type">
-              <option value="unit">Unidad</option>
-              <option value="weight">Peso (Kg / Verdura)</option>
-            </select>
-          </div>
-          <div><label for="p-name">Nombre</label><input id="p-name" placeholder="Ej: Papa / Coca 500ml"></div>
-          <div><label for="p-price" id="lbl-price">Precio venta x Un.</label><input id="p-price" type="number" min="0" step="any"></div>
-          <div><label for="p-cost" id="lbl-cost">Costo x Un.</label><input id="p-cost" type="number" min="0" step="any"></div>
-          <div id="box-stock"><label for="p-stock">Stock</label><input id="p-stock" type="number" min="0" step="1"></div>
-          <div id="box-min"><label for="p-min">Mínimo</label><input id="p-min" type="number" min="0" step="1" value="3"></div>
-          <button class="primary" id="add-product">Guardar</button>
-        </div>
-      </div>
-      <div class="card">
-        <div class="search-box">
-          <input type="text" id="search-stock" placeholder="Buscar en inventario..." autocomplete="off">
-          <button class="clear-btn" id="clear-search-stock">✕</button>
-        </div>
-        <table>
-          <thead><tr><th>Producto</th><th class="num">Precio</th><th class="num">Costo</th><th class="num">Stock / Tipo</th><th></th></tr></thead>
-          <tbody id="stock-body"></tbody>
-        </table>
-        <p class="muted" id="stock-empty"></p>
-      </div>
-    </section>
+  <!-- Pantalla de login: se muestra si no hay sesión -->
+  <section id="login" class="login">
+    <form id="form-login" class="card">
+      <h3>Ingresar</h3>
+      <input name="email" type="email" placeholder="Email" required autocomplete="username">
+      <input name="password" type="password" placeholder="Contraseña" required autocomplete="current-password">
+      <button class="btn-primario">Entrar</button>
+      <p id="error-login" class="deuda"></p>
+    </form>
+  </section>
 
-    <!-- GASTOS -->
-    <section id="tab-gastos" class="hidden">
-      <div class="card">
-        <strong>Nuevo gasto</strong>
-        <div class="row" style="margin-top:10px">
-          <div><label for="e-desc">Descripción</label><input id="e-desc" placeholder="Ej: Luz, proveedor, bolsas"></div>
-          <div><label for="e-amount">Monto</label><input id="e-amount" type="number" min="0" step="any"></div>
-          <button class="primary" id="add-expense">Agregar</button>
-        </div>
-      </div>
-      <div class="card">
-        <table>
-          <thead><tr><th>Fecha</th><th>Descripción</th><th class="num">Monto</th><th></th></tr></thead>
-          <tbody id="expense-body"></tbody>
-        </table>
-      </div>
-    </section>
+  <!-- App: se muestra al iniciar sesión -->
+  <div id="app" hidden>
+    <nav class="top-nav">
+      <button class="tab activa" data-seccion="ventas">VENTAS</button>
+      <button class="tab" data-seccion="cc">CC</button>
+      <button class="tab" data-seccion="resumen">RESUMEN</button>
+    </nav>
 
-    <!-- RESUMEN -->
-    <section id="tab-resumen" class="hidden">
-      <div class="stats">
-        <div class="stat"><div class="muted">Ventas hoy</div><div class="big" id="s-sales">$0</div></div>
-        <div class="stat"><div class="muted">Tickets</div><div class="big" id="s-count">0</div></div>
-        <div class="stat"><div class="muted">Ganancia bruta</div><div class="big" id="s-profit">$0</div></div>
-        <div class="stat"><div class="muted">Gastos hoy</div><div class="big" id="s-exp">$0</div></div>
-        <div class="stat"><div class="muted">Neto del día</div><div class="big" id="s-net">$0</div></div>
-      </div>
-      <div class="card" style="margin-top:14px">
-        <strong>Por medio de pago (hoy)</strong>
-        <table><tbody id="pay-body"></tbody></table>
-      </div>
-      <div class="card">
-        <strong>Bajo stock</strong>
-        <div id="low-list" class="muted" style="margin-top:8px"></div>
-      </div>
-      <div class="card">
-        <strong>Historial de ventas (últimas 20)</strong>
-        <table><tbody id="sales-body"></tbody></table>
-      </div>
-      <div class="card">
-        <button class="danger" id="reset">Borrar todos los datos en BD</button>
-        <span class="muted"> Esta acción elimina los registros de Supabase.</span>
-      </div>
-    </section>
-  </main>
+    <main>
+      <section id="ventas" class="seccion activa"></section>
+      <section id="cc" class="seccion"></section>
+      <section id="resumen" class="seccion"></section>
+    </main>
 
-  <!-- Script Principal -->
-  <script src="main.js"></script>
+    <footer class="pie">
+      <button id="btn-salir" class="btn-secundario">Cerrar sesión</button>
+    </footer>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
 </body>
 </html>

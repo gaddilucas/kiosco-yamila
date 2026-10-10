@@ -1,0 +1,3 @@
+// Datos públicos del proyecto. La anon key puede estar en el frontend porque RLS protege las tablas.
+export const SUPABASE_URL = 'https://ukgkabyasrnjceksgjth.supabase.co';
+export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVrZ2thYnlhc3JuamNla3NnanRoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE2MzU4MTksImV4cCI6MjEwNzIxMTgxOX0.lZQQ-DwWgt5d7L__ep9mcOqtndFBl7gp4Y4uRi-J1yM';
