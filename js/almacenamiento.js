@@ -1,4 +1,4 @@
-// Acceso a Supabase: login y lectura/escritura de datos.
+// Acceso a Supabase: sesión, lectura y escritura de datos.
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
@@ -18,16 +18,25 @@ export const alCambiarSesion = fn => sb.auth.onAuthStateChange(fn);
 
 // ---------- Lectura ----------
 export async function cargarTodo() {
-  const [clientes, ventas] = await Promise.all([
+  const [productos, clientes, ventas] = await Promise.all([
+    sb.from('productos').select('id, nombre, precio, tipo').order('nombre'),
     sb.from('clientes').select('id, nombre, movimientos(tipo, monto, nota, fecha)').order('creado_en'),
-    sb.from('ventas').select('id, fecha, total, cliente_id, venta_items(producto_id, nombre, precio)').order('fecha'),
+    sb.from('ventas')
+      .select('id, fecha, total, cliente_id, venta_items(producto_id, nombre, precio, cantidad, subtotal)')
+      .order('fecha'),
   ]);
+  if (productos.error) throw productos.error;
   if (clientes.error) throw clientes.error;
   if (ventas.error) throw ventas.error;
-  return { clientes: clientes.data, ventas: ventas.data };
+  return { productos: productos.data, clientes: clientes.data, ventas: ventas.data };
 }
 
 // ---------- Escritura ----------
+export async function insertarProducto(producto) {
+  const { error } = await sb.from('productos').insert(producto);
+  if (error) throw error;
+}
+
 export async function insertarCliente(cliente) {
   const { error } = await sb.from('clientes').insert(cliente);
   if (error) throw error;
