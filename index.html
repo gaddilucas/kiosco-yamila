@@ -1,345 +1,140 @@
-// CONFIGURÁ TUS CREDENCIALES DE SUPABASE ACÁ
-const SUPABASE_URL = 'TU_SUPABASE_URL';
-const SUPABASE_ANON_KEY = 'TU_SUPABASE_ANON_KEY';
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Kiosco & Verdulería - Supabase</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Libreria Oficial de Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <header>
+    <h1>Kiosco & Verdulería</h1>
+    <span class="muted" id="today"></span>
+  </header>
+  
+  <nav>
+    <button class="tab active" data-tab="vender">Vender</button>
+    <button class="tab" data-tab="stock">Stock / Productos</button>
+    <button class="tab" data-tab="gastos">Gastos</button>
+    <button class="tab" data-tab="resumen">Resumen</button>
+  </nav>
+  
+  <main>
+    <!-- VENDER -->
+    <section id="tab-vender">
+      <div class="search-box">
+        <input type="text" id="search-vender" placeholder="Buscar producto por nombre..." autocomplete="off">
+        <button class="clear-btn" id="clear-search-vender">✕</button>
+      </div>
+      <div class="grid" id="product-grid"></div>
+      <div class="card" style="margin-top:14px">
+        <strong>Carrito</strong>
+        <div id="cart"></div>
+        <div class="row" style="margin-top:12px">
+          <div>
+            <label for="pay">Medio de pago</label>
+            <select id="pay">
+              <option value="efectivo">Efectivo</option>
+              <option value="transferencia">Transferencia</option>
+              <option value="modo">MODO</option>
+              <option value="tarjeta">Tarjeta</option>
+              <option value="otro">Otro</option>
+            </select>
+          </div>
+          <div style="text-align:right">
+            <div class="muted">Total</div>
+            <div class="big" id="cart-total">$0</div>
+          </div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button id="clear-cart">Vaciar</button>
+          <button class="primary" id="charge" style="flex:1">Cobrar</button>
+        </div>
+      </div>
+    </section>
 
-const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    <!-- STOCK -->
+    <section id="tab-stock" class="hidden">
+      <div class="card">
+        <strong>Nuevo producto / Verdura (Si ya existe, se actualiza)</strong>
+        <div class="row" style="margin-top:10px">
+          <div>
+            <label for="p-type">Venta por</label>
+            <select id="p-type">
+              <option value="unit">Unidad</option>
+              <option value="weight">Peso (Kg / Verdura)</option>
+            </select>
+          </div>
+          <div><label for="p-name">Nombre</label><input id="p-name" placeholder="Ej: Papa / Coca 500ml"></div>
+          <div><label for="p-price" id="lbl-price">Precio venta x Un.</label><input id="p-price" type="number" min="0" step="any"></div>
+          <div><label for="p-cost" id="lbl-cost">Costo x Un.</label><input id="p-cost" type="number" min="0" step="any"></div>
+          <div id="box-stock"><label for="p-stock">Stock</label><input id="p-stock" type="number" min="0" step="1"></div>
+          <div id="box-min"><label for="p-min">Mínimo</label><input id="p-min" type="number" min="0" step="1" value="3"></div>
+          <button class="primary" id="add-product">Guardar</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="search-box">
+          <input type="text" id="search-stock" placeholder="Buscar en inventario..." autocomplete="off">
+          <button class="clear-btn" id="clear-search-stock">✕</button>
+        </div>
+        <table>
+          <thead><tr><th>Producto</th><th class="num">Precio</th><th class="num">Costo</th><th class="num">Stock / Tipo</th><th></th></tr></thead>
+          <tbody id="stock-body"></tbody>
+        </table>
+        <p class="muted" id="stock-empty"></p>
+      </div>
+    </section>
 
-let products = [];
-let cart = [];
-let accounts = [];
-let expenses = [];
-let sales = [];
+    <!-- GASTOS -->
+    <section id="tab-gastos" class="hidden">
+      <div class="card">
+        <strong>Nuevo gasto</strong>
+        <div class="row" style="margin-top:10px">
+          <div><label for="e-desc">Descripción</label><input id="e-desc" placeholder="Ej: Luz, proveedor, bolsas"></div>
+          <div><label for="e-amount">Monto</label><input id="e-amount" type="number" min="0" step="any"></div>
+          <button class="primary" id="add-expense">Agregar</button>
+        </div>
+      </div>
+      <div class="card">
+        <table>
+          <thead><tr><th>Fecha</th><th>Descripción</th><th class="num">Monto</th><th></th></tr></thead>
+          <tbody id="expense-body"></tbody>
+        </table>
+      </div>
+    </section>
 
-document.addEventListener('DOMContentLoaded', async () => {
-  document.getElementById('today').textContent = new Date().toLocaleDateString();
-  setupTabs();
-  setupEvents();
-  await loadAllData();
-});
+    <!-- RESUMEN -->
+    <section id="tab-resumen" class="hidden">
+      <div class="stats">
+        <div class="stat"><div class="muted">Ventas hoy</div><div class="big" id="s-sales">$0</div></div>
+        <div class="stat"><div class="muted">Tickets</div><div class="big" id="s-count">0</div></div>
+        <div class="stat"><div class="muted">Ganancia bruta</div><div class="big" id="s-profit">$0</div></div>
+        <div class="stat"><div class="muted">Gastos hoy</div><div class="big" id="s-exp">$0</div></div>
+        <div class="stat"><div class="muted">Neto del día</div><div class="big" id="s-net">$0</div></div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <strong>Por medio de pago (hoy)</strong>
+        <table><tbody id="pay-body"></tbody></table>
+      </div>
+      <div class="card">
+        <strong>Bajo stock</strong>
+        <div id="low-list" class="muted" style="margin-top:8px"></div>
+      </div>
+      <div class="card">
+        <strong>Historial de ventas (últimas 20)</strong>
+        <table><tbody id="sales-body"></tbody></table>
+      </div>
+      <div class="card">
+        <button class="danger" id="reset">Borrar todos los datos en BD</button>
+        <span class="muted"> Esta acción elimina los registros de Supabase.</span>
+      </div>
+    </section>
+  </main>
 
-function setupTabs() {
-  document.querySelectorAll('.tab').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('main > section').forEach(s => s.classList.add('hidden'));
-      btn.classList.add('active');
-      document.getElementById(`tab-${btn.dataset.tab}`).classList.remove('hidden');
-    });
-  });
-}
-
-function setupEvents() {
-  document.getElementById('add-product').onclick = addProduct;
-  document.getElementById('add-expense').onclick = addExpense;
-  document.getElementById('add-account').onclick = addAccount;
-  document.getElementById('clear-cart').onclick = () => { cart = []; renderCart(); };
-  document.getElementById('charge').onclick = processSale;
-
-  document.getElementById('pay').onchange = (e) => {
-    const box = document.getElementById('account-box');
-    if (e.target.value === 'cuenta_corriente') box.classList.remove('hidden');
-    else box.classList.add('hidden');
-  };
-
-  document.getElementById('search-vender').oninput = (e) => renderProducts(e.target.value);
-  document.getElementById('clear-search-vender').onclick = () => {
-    document.getElementById('search-vender').value = '';
-    renderProducts();
-  };
-
-  document.getElementById('search-stock').oninput = (e) => renderStock(e.target.value);
-  document.getElementById('clear-search-stock').onclick = () => {
-    document.getElementById('search-stock').value = '';
-    renderStock();
-  };
-}
-
-async function loadAllData() {
-  try {
-    const [pRes, aRes, eRes, sRes] = await Promise.all([
-      supabaseClient.from('products').select('*').order('name'),
-      supabaseClient.from('accounts').select('*').order('name'),
-      supabaseClient.from('expenses').select('*').order('created_at', { ascending: false }),
-      supabaseClient.from('sales').select('*').order('created_at', { ascending: false }).limit(20)
-    ]);
-
-    products = pRes.data || [];
-    accounts = aRes.data || [];
-    expenses = eRes.data || [];
-    sales = sRes.data || [];
-
-    renderProducts();
-    renderStock();
-    renderAccounts();
-    renderExpenses();
-    renderSalesHistory();
-    renderSummary();
-    updateAccountSelect();
-  } catch (err) {
-    console.error('Error cargando datos:', err);
-  }
-}
-
-// --- PRODUCTOS Y VENTA ---
-function renderProducts(filter = '') {
-  const grid = document.getElementById('product-grid');
-  grid.innerHTML = '';
-  const filtered = products.filter(p => p.name.toLowerCase().includes(filter.toLowerCase()));
-
-  filtered.forEach(p => {
-    const tile = document.createElement('div');
-    tile.className = 'product-tile';
-    tile.innerHTML = `
-      <div class="name">${p.name}</div>
-      <div class="price">$${p.price} ${p.type === 'weight' ? '/kg' : ''}</div>
-    `;
-    tile.onclick = () => addToCart(p);
-    grid.appendChild(tile);
-  });
-}
-
-function addToCart(product) {
-  let qty = 1;
-  if (product.type === 'weight') {
-    const input = prompt(`Ingrese los Kg para ${product.name}:`, '1');
-    if (!input) return;
-    qty = parseFloat(input);
-    if (isNaN(qty) || qty <= 0) return;
-  }
-
-  const existing = cart.find(item => item.id === product.id);
-  if (existing) {
-    existing.qty += qty;
-  } else {
-    cart.push({ ...product, qty });
-  }
-  renderCart();
-}
-
-function renderCart() {
-  const container = document.getElementById('cart');
-  container.innerHTML = '';
-  let total = 0;
-
-  cart.forEach((item, index) => {
-    const subtotal = item.price * item.qty;
-    total += subtotal;
-    const row = document.createElement('div');
-    row.style.cssText = 'display:flex; justify-content:space-between; margin-bottom:6px; font-size:0.9rem; align-items:center;';
-    row.innerHTML = `
-      <span>${item.name} (${item.qty} ${item.type === 'weight' ? 'kg' : 'un'})</span>
-      <span>$${subtotal.toFixed(2)} <button style="background:none;border:none;color:red;cursor:pointer;margin-left:8px;" onclick="removeFromCart(${index})">✕</button></span>
-    `;
-    container.appendChild(row);
-  });
-
-  document.getElementById('cart-total').textContent = `$${total.toFixed(2)}`;
-}
-
-window.removeFromCart = function(index) {
-  cart.splice(index, 1);
-  renderCart();
-};
-
-async function processSale() {
-  if (cart.length === 0) return alert('El carrito está vacío');
-  const payMethod = document.getElementById('pay').value;
-  const accountId = document.getElementById('account-select').value;
-
-  if (payMethod === 'cuenta_corriente' && !accountId) {
-    return alert('Seleccioná una cuenta corriente');
-  }
-
-  const total = cart.reduce((acc, item) => acc + (item.price * item.qty), 0);
-  const costTotal = cart.reduce((acc, item) => acc + ((item.cost || 0) * item.qty), 0);
-
-  // Guardar venta
-  const { data: saleData, error } = await supabaseClient.from('sales').insert([{
-    total,
-    cost: costTotal,
-    payment_method: payMethod,
-    account_id: payMethod === 'cuenta_corriente' ? accountId : null
-  }]).select();
-
-  if (error) {
-    alert('Error al registrar venta: ' + error.message);
-    return;
-  }
-
-  // Si es cuenta corriente, actualizar deuda
-  if (payMethod === 'cuenta_corriente') {
-    const accObj = accounts.find(a => a.id == accountId);
-    if (accObj) {
-      await supabaseClient.from('accounts').update({ debt: (accObj.debt || 0) + total }).eq('id', accountId);
-    }
-  }
-
-  cart = [];
-  renderCart();
-  await loadAllData();
-  alert('¡Venta registrada con éxito!');
-}
-
-// --- STOCK ---
-async function addProduct() {
-  const name = document.getElementById('p-name').value.trim();
-  const price = parseFloat(document.getElementById('p-price').value);
-  const cost = parseFloat(document.getElementById('p-cost').value) || 0;
-  const stock = parseFloat(document.getElementById('p-stock').value) || 0;
-  const type = document.getElementById('p-type').value;
-
-  if (!name || isNaN(price)) return alert('Completá el nombre y el precio');
-
-  const { error } = await supabaseClient.from('products').insert([{ name, price, cost, stock, type }]);
-  if (error) return alert('Error: ' + error.message);
-
-  document.getElementById('p-name').value = '';
-  document.getElementById('p-price').value = '';
-  document.getElementById('p-cost').value = '';
-  document.getElementById('p-stock').value = '10';
-  await loadAllData();
-}
-
-function renderStock(filter = '') {
-  const tbody = document.getElementById('stock-body');
-  tbody.innerHTML = '';
-  const filtered = products.filter(p => p.name.toLowerCase().includes(filter.toLowerCase()));
-
-  filtered.forEach(p => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${p.name}</td>
-      <td class="num">$${p.price}</td>
-      <td class="num">$${p.cost || 0}</td>
-      <td class="num">${p.stock} ${p.type === 'weight' ? 'kg' : 'un'}</td>
-      <td class="num"><button class="danger" style="padding:4px 8px;font-size:0.8rem;" onclick="deleteProduct('${p.id}')">Eliminar</button></td>
-    `;
-    tbody.appendChild(tr);
-  });
-}
-
-window.deleteProduct = async function(id) {
-  if (!confirm('¿Borrar producto?')) return;
-  await supabaseClient.from('products').delete().eq('id', id);
-  await loadAllData();
-};
-
-// --- GASTOS ---
-async function addExpense() {
-  const description = document.getElementById('e-desc').value.trim();
-  const amount = parseFloat(document.getElementById('e-amount').value);
-  if (!description || isNaN(amount)) return alert('Completá la descripción y el monto');
-
-  const { error } = await supabaseClient.from('expenses').insert([{ description, amount }]);
-  if (error) return alert('Error: ' + error.message);
-
-  document.getElementById('e-desc').value = '';
-  document.getElementById('e-amount').value = '';
-  await loadAllData();
-}
-
-function renderExpenses() {
-  const tbody = document.getElementById('expense-body');
-  tbody.innerHTML = '';
-  expenses.forEach(e => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${new Date(e.created_at).toLocaleDateString()}</td>
-      <td>${e.description}</td>
-      <td class="num">$${e.amount}</td>
-      <td class="num"><button class="danger" style="padding:4px 8px;font-size:0.8rem;" onclick="deleteExpense('${e.id}')">✕</button></td>
-    `;
-    tbody.appendChild(tr);
-  });
-}
-
-window.deleteExpense = async function(id) {
-  await supabaseClient.from('expenses').delete().eq('id', id);
-  await loadAllData();
-};
-
-// --- CUENTAS CORRIENTES ---
-async function addAccount() {
-  const name = document.getElementById('cc-name').value.trim();
-  if (!name) return alert('Ingresá un nombre');
-
-  const { error } = await supabaseClient.from('accounts').insert([{ name, debt: 0 }]);
-  if (error) return alert('Error: ' + error.message);
-
-  document.getElementById('cc-name').value = '';
-  await loadAllData();
-}
-
-function renderAccounts() {
-  const tbody = document.getElementById('cc-body');
-  tbody.innerHTML = '';
-  accounts.forEach(a => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${a.name}</td>
-      <td class="num">$${a.debt || 0}</td>
-      <td class="num">
-        <button style="padding:4px 8px;font-size:0.8rem;margin-right:4px;" onclick="payDebt('${a.id}', ${a.debt})">Pagar</button>
-        <button class="danger" style="padding:4px 8px;font-size:0.8rem;" onclick="deleteAccount('${a.id}')">Borrar</button>
-      </td>
-    `;
-    tbody.appendChild(tr);
-  });
-}
-
-window.payDebt = async function(id, currentDebt) {
-  const pago = prompt(`Deuda actual: $${currentDebt}. ¿Cuánto paga?`, currentDebt);
-  if (!pago) return;
-  const val = parseFloat(pago);
-  if (isNaN(val) || val <= 0) return;
-
-  const newDebt = Math.max(0, currentDebt - val);
-  await supabaseClient.from('accounts').update({ debt: newDebt }).eq('id', id);
-  await loadAllData();
-};
-
-window.deleteAccount = async function(id) {
-  if (!confirm('¿Eliminar cuenta?')) return;
-  await supabaseClient.from('accounts').delete().eq('id', id);
-  await loadAllData();
-};
-
-function updateAccountSelect() {
-  const select = document.getElementById('account-select');
-  select.innerHTML = '<option value="">Seleccioná cuenta</option>';
-  accounts.forEach(a => {
-    const opt = document.createElement('option');
-    opt.value = a.id;
-    opt.textContent = `${a.name} (Deuda: $${a.debt || 0})`;
-    select.appendChild(opt);
-  });
-}
-
-// --- RESUMEN Y HISTORIAL ---
-function renderSalesHistory() {
-  const tbody = document.getElementById('sales-body');
-  tbody.innerHTML = '';
-  sales.forEach(s => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${new Date(s.created_at).toLocaleString()}</td>
-      <td>${s.payment_method}</td>
-      <td class="num">$${s.total}</td>
-    `;
-    tbody.appendChild(tr);
-  });
-}
-
-function renderSummary() {
-  const totalSales = sales.reduce((acc, s) => acc + s.total, 0);
-  const totalCost = sales.reduce((acc, s) => acc + (s.cost || 0), 0);
-  const totalProfit = totalSales - totalCost;
-  const totalExpenses = expenses.reduce((acc, e) => acc + e.amount, 0);
-  const net = totalProfit - totalExpenses;
-
-  document.getElementById('s-sales').textContent = `$${totalSales.toFixed(2)}`;
-  document.getElementById('s-count').textContent = sales.length;
-  document.getElementById('s-profit').textContent = `$${totalProfit.toFixed(2)}`;
-  document.getElementById('s-exp').textContent = `$${totalExpenses.toFixed(2)}`;
-  document.getElementById('s-net').textContent = `$${net.toFixed(2)}`;
-}
+  <!-- Script Principal -->
+  <script src="main.js"></script>
+</body>
+</html>
