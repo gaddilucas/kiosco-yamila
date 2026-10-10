@@ -58,6 +58,7 @@ td.num, th.num { text-align: right; white-space: nowrap; }
 .muted { color: var(--muted); font-size: 13px; }
 .stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
 .stat { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+.summary-layout { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-top: 14px; }
 .cart-line { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px dashed var(--line); }
 .qty { display: flex; align-items: center; gap: 6px; }
 .qty button { padding: 2px 9px; }

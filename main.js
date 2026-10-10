@@ -6,7 +6,7 @@
   const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlrand6YXBkaW95ZnBldnh6enF5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE1OTA1OTIsImV4cCI6MjEwNzE2NjU5Mn0.KeHBe4Vev_QEW7sXQEdKv4kIpnbWocpZMPRFX7ccx_k";
   const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  const PAY = { efectivo: "Efectivo", transferencia: "Transferencia", modo: "MODO", tarjeta: "Tarjeta", otro: "Otro" };
+  const PAY = { efectivo: "Efectivo", transferencia: "Transferencia", modo: "MODO", tarjeta: "Tarjeta", otro: "Otro", cuenta_corriente: "Cuenta corriente" };
   const $ = (id) => document.getElementById(id);
   const asNumber = (value, fallback = 0) => {
     const n = Number(value);
@@ -94,6 +94,15 @@
       `<tr><td>${PAY[k]}</td><td class="num">${fmt(byPay[k])}</td></tr>`).join("")
       || `<tr><td class="muted">Sin ventas en el rango.</td></tr>`;
 
+    const byAccount = {};
+    sales.filter((s) => s.pay === "cuenta_corriente").forEach((s) => {
+      const accountName = s.account || "Sin cuenta";
+      byAccount[accountName] = (byAccount[accountName] || 0) + s.total;
+    });
+    $("account-body").innerHTML = Object.keys(byAccount).map((name) =>
+      `<tr><td>${esc(name)}</td><td class="num">${fmt(byAccount[name])}</td></tr>`).join("")
+      || `<tr><td class="muted">Sin cuentas corrientes.</td></tr>`;
+
     const low = data.products.filter((p) => !p.isWeight && p.stock <= p.min);
     $("low-list").innerHTML = low.length
       ? low.map((p) => `${esc(p.name)} (${p.stock})`).join(" · ")
@@ -103,7 +112,8 @@
       const d = new Date(s.at);
       const hora = d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
       const items = (s.items || []).map((i) => `${i.qty} ${i.name}`).join(", ");
-      return `<tr><td>${s.date.slice(5)} ${hora}</td><td>${items}</td><td>${PAY[s.pay]}</td><td class="num">${fmt(s.total)}</td></tr>`;
+      const payText = s.pay === "cuenta_corriente" ? `${PAY[s.pay]} · ${esc(s.account || "Sin cuenta")}` : PAY[s.pay];
+      return `<tr><td>${s.date.slice(5)} ${hora}</td><td>${items}</td><td>${payText}</td><td class="num">${fmt(s.total)}</td></tr>`;
     }).join("") || `<tr><td class="muted">Sin ventas todavía.</td></tr>`;
   }
 
@@ -151,7 +161,7 @@
 
       data.sales = (resSales.data || []).map(s => ({
         id: s.id, at: s.created_at, date: s.date,
-        items: s.items, total: Number(s.total), profit: Number(s.profit), pay: s.pay
+        items: s.items, total: Number(s.total), profit: Number(s.profit), pay: s.pay, account: s.account || null
       }));
 
       data.expenses = (resExp.data || []).map(e => ({
@@ -260,10 +270,30 @@
     }, 0);
   }
 
+  function getSelectedAccountName() {
+    const pay = $("pay").value;
+    if (pay !== "cuenta_corriente") return null;
+    const account = $("account-select").value;
+    return account || "Sin cuenta";
+  }
+
+  function updatePaySelection() {
+    const isCuenta = $("pay").value === "cuenta_corriente";
+    $("account-box").classList.toggle("hidden", !isCuenta);
+    if (!isCuenta) {
+      $("account-select").value = "";
+    }
+  }
+
   async function charge() {
     const saleItems = [];
     let total = 0;
     let profit = 0;
+
+    if ($("pay").value === "cuenta_corriente" && !$("account-select").value) {
+      alert("Seleccioná una cuenta corriente antes de cobrar.");
+      return;
+    }
 
     for (const [id, rawQty] of Object.entries(cart)) {
       const p = getProductById(id);
@@ -304,7 +334,8 @@
       items: saleItems.map((i) => ({ name: i.name, qty: i.qty, price: i.price })),
       total: Number(total.toFixed(2)),
       profit: Number(profit.toFixed(2)),
-      pay: $("pay").value
+      pay: $("pay").value,
+      account: getSelectedAccountName()
     };
 
     const resSale = await _supabase.from('sales').insert([saleRecord]);
@@ -437,6 +468,8 @@
   $("clear-search-vender").addEventListener("click", () => { $("search-vender").value = ""; renderProducts(); });
   $("search-stock").addEventListener("input", renderStock);
   $("clear-search-stock").addEventListener("click", () => { $("search-stock").value = ""; renderStock(); });
+  $("pay").addEventListener("change", updatePaySelection);
+  $("account-select").addEventListener("change", () => {});
   $("apply-summary").addEventListener("click", applySummaryFilter);
   $("export-csv").addEventListener("click", exportCsv);
 
@@ -538,5 +571,6 @@
   // ==========================================
   $("today").textContent = new Date().toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" });
   setRangeInputs(summaryRange);
+  updatePaySelection();
   loadData();
 })();

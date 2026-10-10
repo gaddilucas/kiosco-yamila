@@ -41,6 +41,19 @@
               <option value="modo">MODO</option>
               <option value="tarjeta">Tarjeta</option>
               <option value="otro">Otro</option>
+              <option value="cuenta_corriente">Cuenta corriente</option>
+            </select>
+          </div>
+          <div id="account-box" class="hidden">
+            <label for="account-select">Cuenta corriente</label>
+            <select id="account-select">
+              <option value="">Seleccioná cuenta</option>
+              <option value="Banco Nación">Banco Nación</option>
+              <option value="Santander">Santander</option>
+              <option value="Galicia">Galicia</option>
+              <option value="Macro">Macro</option>
+              <option value="ICBC">ICBC</option>
+              <option value="Otra cuenta">Otra cuenta</option>
             </select>
           </div>
           <div style="text-align:right">
@@ -124,9 +137,15 @@
         <div class="stat"><div class="muted">Gastos</div><div class="big" id="s-exp">$0</div></div>
         <div class="stat"><div class="muted">Neto</div><div class="big" id="s-net">$0</div></div>
       </div>
-      <div class="card" style="margin-top:14px">
-        <strong>Por medio de pago</strong>
-        <table><tbody id="pay-body"></tbody></table>
+      <div class="summary-layout">
+        <div class="card" style="margin-top:14px">
+          <strong>Por medio de pago</strong>
+          <table><tbody id="pay-body"></tbody></table>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>Cuentas corriente</strong>
+          <table><tbody id="account-body"></tbody></table>
+        </div>
       </div>
       <div class="card">
         <strong>Bajo stock</strong>
