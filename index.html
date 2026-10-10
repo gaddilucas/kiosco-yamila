@@ -18,6 +18,7 @@
     <button class="tab active" data-tab="vender">Vender</button>
     <button class="tab" data-tab="stock">Stock / Productos</button>
     <button class="tab" data-tab="gastos">Gastos</button>
+    <button class="tab" data-tab="cc">C.C</button>
     <button class="tab" data-tab="resumen">Resumen</button>
   </nav>
   
@@ -48,12 +49,6 @@
             <label for="account-select">Cuenta corriente</label>
             <select id="account-select">
               <option value="">Seleccioná cuenta</option>
-              <option value="Banco Nación">Banco Nación</option>
-              <option value="Santander">Santander</option>
-              <option value="Galicia">Galicia</option>
-              <option value="Macro">Macro</option>
-              <option value="ICBC">ICBC</option>
-              <option value="Otra cuenta">Otra cuenta</option>
             </select>
           </div>
           <div style="text-align:right">
@@ -115,6 +110,24 @@
         <table>
           <thead><tr><th>Fecha</th><th>Descripción</th><th class="num">Monto</th><th></th></tr></thead>
           <tbody id="expense-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- C.C -->
+    <section id="tab-cc" class="hidden">
+      <div class="card">
+        <strong>Nueva cuenta corriente</strong>
+        <div class="row" style="margin-top:10px">
+          <div><label for="cc-name">Nombre de la persona</label><input id="cc-name" placeholder="Ej: Ana, Luis, Mercado"></div>
+          <button class="primary" id="add-account">Agregar cuenta</button>
+          <button class="danger" id="reset-accounts">Borrar todas las cuentas</button>
+        </div>
+      </div>
+      <div class="card">
+        <table>
+          <thead><tr><th>Cuenta</th><th class="num">Deuda</th><th></th></tr></thead>
+          <tbody id="cc-body"></tbody>
         </table>
       </div>
     </section>

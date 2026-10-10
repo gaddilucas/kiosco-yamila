@@ -19,7 +19,7 @@
   const formatWeight = (n) => String(Number(n)).replace(/\.0+$/, "");
 
   // ESTADO GLOBAL
-  let data = { products: [], sales: [], expenses: [] };
+  let data = { products: [], sales: [], expenses: [], accounts: [] };
   let cart = {};
   let summaryRange = { from: todayKey(), to: todayKey() };
 
@@ -38,6 +38,10 @@
 
   function getProductById(id) {
     return data.products.find((x) => x.id === id);
+  }
+
+  function getAccountById(id) {
+    return data.accounts.find((x) => x.id === id);
   }
 
   function safeQty(value) {
@@ -67,7 +71,7 @@
 
   function getFilteredSummarySales() {
     const { from, to } = summaryRange;
-    return data.sales.filter((s) => inDateRange(s.date, from, to));
+    return data.sales.filter((s) => s.pay !== "cuenta_corriente" && inDateRange(s.date, from, to));
   }
 
   function getFilteredSummaryExpenses() {
@@ -95,7 +99,7 @@
       || `<tr><td class="muted">Sin ventas en el rango.</td></tr>`;
 
     const byAccount = {};
-    sales.filter((s) => s.pay === "cuenta_corriente").forEach((s) => {
+    data.sales.filter((s) => s.pay === "cuenta_corriente" && inDateRange(s.date, summaryRange.from, summaryRange.to)).forEach((s) => {
       const accountName = s.account || "Sin cuenta";
       byAccount[accountName] = (byAccount[accountName] || 0) + s.total;
     });
@@ -147,15 +151,17 @@
   // ==========================================
   async function loadData() {
     try {
-      const [resProd, resSales, resExp] = await Promise.all([
+      const [resProd, resSales, resExp, resAcc] = await Promise.all([
         _supabase.from('products').select('*'),
         _supabase.from('sales').select('*'),
-        _supabase.from('expenses').select('*')
+        _supabase.from('expenses').select('*'),
+        _supabase.from('accounts').select('*')
       ]);
 
       if (resProd.error) throw resProd.error;
       if (resSales.error) throw resSales.error;
       if (resExp.error) throw resExp.error;
+      if (resAcc.error) throw resAcc.error;
 
       data.products = (resProd.data || []).map(normalizeProduct);
 
@@ -168,9 +174,19 @@
         id: e.id, date: e.date, desc: e.description, amount: Number(e.amount)
       }));
 
+      data.accounts = (resAcc.data || []).map(account => ({
+        id: account.id,
+        name: String(account.name || "").trim(),
+        balance: Number(account.balance || 0)
+      }));
+
       renderAll();
     } catch (e) {
       console.error("Error al conectar con Supabase:", e);
+      if (String(e.message || "").toLowerCase().includes("accounts")) {
+        data.accounts = [];
+        renderAll();
+      }
     }
   }
 
@@ -182,7 +198,9 @@
     renderCart();
     renderStock();
     renderExpenses();
+    renderAccounts();
     renderSummary();
+    updatePaySelection();
   }
 
   function renderProducts() {
@@ -259,6 +277,31 @@
     </tr>`).join("") || `<tr><td class="muted">Sin gastos registrados.</td></tr>`;
   }
 
+  function renderAccounts() {
+    const accountOptions = data.accounts.map((account) =>
+      `<option value="${account.id}">${esc(account.name)}</option>`
+    ).join("");
+
+    const select = $("account-select");
+    if (select) {
+      const selected = select.value;
+      select.innerHTML = `<option value="">Seleccioná cuenta</option>${accountOptions}`;
+      if (selected && data.accounts.some((a) => a.id === selected)) {
+        select.value = selected;
+      }
+    }
+
+    $("cc-body").innerHTML = data.accounts.length
+      ? data.accounts.map((account) => `
+        <tr>
+          <td>${esc(account.name)}</td>
+          <td class="num">${fmt(account.balance)}</td>
+          <td class="num"><button class="danger" data-account-del="${account.id}">✕</button></td>
+        </tr>
+      `).join("")
+      : `<tr><td class="muted" colspan="3">Sin cuentas corrientes.</td></tr>`;
+  }
+
   // ==========================================
   // 4. LÓGICA DE NEGOCIO (ACCIONES)
   // ==========================================
@@ -273,8 +316,9 @@
   function getSelectedAccountName() {
     const pay = $("pay").value;
     if (pay !== "cuenta_corriente") return null;
-    const account = $("account-select").value;
-    return account || "Sin cuenta";
+    const accountId = $("account-select").value;
+    const account = getAccountById(accountId);
+    return account ? account.name : "Sin cuenta";
   }
 
   function updatePaySelection() {
@@ -282,7 +326,46 @@
     $("account-box").classList.toggle("hidden", !isCuenta);
     if (!isCuenta) {
       $("account-select").value = "";
+    } else {
+      renderAccounts();
     }
+  }
+
+  async function addAccount() {
+    const name = $("cc-name").value.trim();
+    if (!name) {
+      alert("Escribí el nombre de la cuenta corriente.");
+      return;
+    }
+
+    const exists = data.accounts.some((account) => account.name.toLowerCase() === name.toLowerCase());
+    if (exists) {
+      alert("Ya existe una cuenta con ese nombre.");
+      return;
+    }
+
+    const { error } = await _supabase.from('accounts').insert([{ id: uid(), name, balance: 0 }]);
+    if (error) {
+      alert("Error al crear la cuenta corriente.");
+      console.error(error);
+      return;
+    }
+
+    $("cc-name").value = "";
+    loadData();
+  }
+
+  async function resetAccounts() {
+    if (!confirm("¿Borrar todas las cuentas corrientes?")) return;
+
+    const { error } = await _supabase.from('accounts').delete().neq('id', '');
+    if (error) {
+      alert("Error borrando las cuentas.");
+      console.error(error);
+      return;
+    }
+
+    loadData();
   }
 
   async function charge() {
@@ -342,6 +425,15 @@
     if (resSale.error) {
       alert("Error guardando venta.");
       return;
+    }
+
+    if ($("pay").value === "cuenta_corriente") {
+      const accountId = $("account-select").value;
+      const account = getAccountById(accountId);
+      if (account) {
+        const nextBalance = Number(account.balance || 0) + Number(total.toFixed(2));
+        await _supabase.from('accounts').update({ balance: nextBalance }).eq('id', account.id);
+      }
     }
 
     const stockUpdates = saleItems
@@ -470,6 +562,8 @@
   $("clear-search-stock").addEventListener("click", () => { $("search-stock").value = ""; renderStock(); });
   $("pay").addEventListener("change", updatePaySelection);
   $("account-select").addEventListener("change", () => {});
+  $("add-account").addEventListener("click", addAccount);
+  $("reset-accounts").addEventListener("click", resetAccounts);
   $("apply-summary").addEventListener("click", applySummaryFilter);
   $("export-csv").addEventListener("click", exportCsv);
 
@@ -546,6 +640,14 @@
       const { error } = await _supabase.from('products').delete().eq('id', t.dataset.del);
       if (!error) loadData();
     }
+  });
+
+  $("cc-body").addEventListener("click", async (e) => {
+    const id = e.target.dataset.accountDel;
+    if (!id || !confirm("¿Borrar esta cuenta corriente?")) return;
+
+    const { error } = await _supabase.from('accounts').delete().eq('id', id);
+    if (!error) loadData();
   });
 
   $("expense-body").addEventListener("click", async (e) => {
