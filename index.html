@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kiosco - Supabase</title>
+<!-- Libreria Oficial de Supabase -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root {
+  --bg: #f6f5f2; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6b66;
+  --line: #e4e2dc; --accent: #1f7a5a; --warn: #c2410c; --danger: #b91c1c;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161715; --card: #201f1c; --ink: #f1efe9; --muted: #9b9a93;
+    --line: #34332f; --accent: #3fb88a; --warn: #fb923c; --danger: #f87171;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161715; --card: #201f1c; --ink: #f1efe9; --muted: #9b9a93;
+  --line: #34332f; --accent: #3fb88a; --warn: #fb923c; --danger: #f87171;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-size: 15px; }
+body { padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px); }
+header { display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--card);
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 2; }
+header h1 { font-size: 18px; margin: 0; }
+nav { display: flex; gap: 4px; padding: 8px 12px; overflow-x: auto; }
+nav button { flex: 1; min-width: 80px; }
+main { padding: 12px 16px 40px; max-width: 900px; margin: 0 auto; }
+button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--ink);
+  padding: 8px 12px; border-radius: 8px; cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+button.tab.active { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+button.danger { color: var(--danger); }
+button:disabled { opacity: .45; cursor: default; }
+input, select { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--card); color: var(--ink); width: 100%; }
+label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 14px; }
+.row { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+.row > * { flex: 1; min-width: 120px; }
+.row > button { flex: 0 0 auto; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+.prod { text-align: left; display: flex; flex-direction: column; gap: 4px; padding: 10px; }
+.prod .price { color: var(--accent); font-weight: 600; }
+.prod .stock { font-size: 12px; color: var(--muted); }
+.prod.out { opacity: .4; }
+.low { color: var(--warn); font-weight: 600; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); font-size: 14px; }
+th { color: var(--muted); font-weight: 500; font-size: 12px; }
+td.num, th.num { text-align: right; white-space: nowrap; }
+.big { font-size: 26px; font-weight: 700; }
+.muted { color: var(--muted); font-size: 13px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.stat { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+.cart-line { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px dashed var(--line); }
+.qty { display: flex; align-items: center; gap: 6px; }
+.qty button { padding: 2px 9px; }
+.hidden { display: none !important; }
+
+/* Buscador visual */
+.search-box { position: relative; width: 100%; margin-bottom: 12px; }
+.search-box input { padding-right: 30px; font-size: 15px; }
+.search-box .clear-btn {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  background: none; border: none; font-size: 14px; color: var(--muted);
+  cursor: pointer; padding: 2px 6px; display: none;
+}
+.search-box input:not(:placeholder-shown) + .clear-btn { display: block; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Kiosco</h1>
+  <span class="muted" id="today"></span>
+</header>
+<nav>
+  <button class="tab active" data-tab="vender">Vender</button>
+  <button class="tab" data-tab="stock">Stock</button>
+  <button class="tab" data-tab="gastos">Gastos</button>
+  <button class="tab" data-tab="resumen">Resumen</button>
+</nav>
+<main>
+
+<!-- VENDER -->
+<section id="tab-vender">
+  <div class="search-box">
+    <input type="text" id="search-vender" placeholder="Buscar producto por nombre..." autocomplete="off">
+    <button class="clear-btn" id="clear-search-vender">✕</button>
+  </div>
+  <div class="grid" id="product-grid"></div>
+  <div class="card" style="margin-top:14px">
+    <strong>Carrito</strong>
+    <div id="cart"></div>
+    <div class="row" style="margin-top:12px">
+      <div>
+        <label for="pay">Medio de pago</label>
+        <select id="pay">
+          <option value="efectivo">Efectivo</option>
+          <option value="transferencia">Transferencia</option>
+          <option value="modo">MODO</option>
+          <option value="tarjeta">Tarjeta</option>
+          <option value="otro">Otro</option>
+        </select>
+      </div>
+      <div style="text-align:right">
+        <div class="muted">Total</div>
+        <div class="big" id="cart-total">$0</div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button id="clear-cart">Vaciar</button>
+      <button class="primary" id="charge" style="flex:1">Cobrar</button>
+    </div>
+  </div>
+</section>
+
+<!-- STOCK -->
+<section id="tab-stock" class="hidden">
+  <div class="card">
+    <strong>Nuevo producto</strong>
+    <div class="row" style="margin-top:10px">
+      <div><label for="p-name">Nombre</label><input id="p-name" placeholder="Ej: Coca 500ml"></div>
+      <div><label for="p-price">Precio venta</label><input id="p-price" type="number" min="0" step="any"></div>
+      <div><label for="p-cost">Costo</label><input id="p-cost" type="number" min="0" step="any"></div>
+      <div><label for="p-stock">Stock</label><input id="p-stock" type="number" min="0" step="1"></div>
+      <div><label for="p-min">Mínimo</label><input id="p-min" type="number" min="0" step="1" value="3"></div>
+      <button class="primary" id="add-product">Agregar</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="search-box">
+      <input type="text" id="search-stock" placeholder="Buscar en inventario..." autocomplete="off">
+      <button class="clear-btn" id="clear-search-stock">✕</button>
+    </div>
+    <table>
+      <thead><tr><th>Producto</th><th class="num">Precio</th><th class="num">Costo</th><th class="num">Stock</th><th></th></tr></thead>
+      <tbody id="stock-body"></tbody>
+    </table>
+    <p class="muted" id="stock-empty"></p>
+  </div>
+</section>
+
+<!-- GASTOS -->
+<section id="tab-gastos" class="hidden">
+  <div class="card">
+    <strong>Nuevo gasto</strong>
+    <div class="row" style="margin-top:10px">
+      <div><label for="e-desc">Descripción</label><input id="e-desc" placeholder="Ej: Luz, proveedor, bolsas"></div>
+      <div><label for="e-amount">Monto</label><input id="e-amount" type="number" min="0" step="any"></div>
+      <button class="primary" id="add-expense">Agregar</button>
+    </div>
+  </div>
+  <div class="card">
+    <table>
+      <thead><tr><th>Fecha</th><th>Descripción</th><th class="num">Monto</th><th></th></tr></thead>
+      <tbody id="expense-body"></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- RESUMEN -->
+<section id="tab-resumen" class="hidden">
+  <div class="stats">
+    <div class="stat"><div class="muted">Ventas hoy</div><div class="big" id="s-sales">$0</div></div>
+    <div class="stat"><div class="muted">Tickets</div><div class="big" id="s-count">0</div></div>
+    <div class="stat"><div class="muted">Ganancia bruta</div><div class="big" id="s-profit">$0</div></div>
+    <div class="stat"><div class="muted">Gastos hoy</div><div class="big" id="s-exp">$0</div></div>
+    <div class="stat"><div class="muted">Neto del día</div><div class="big" id="s-net">$0</div></div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <strong>Por medio de pago (hoy)</strong>
+    <table><tbody id="pay-body"></tbody></table>
+  </div>
+  <div class="card">
+    <strong>Bajo stock</strong>
+    <div id="low-list" class="muted" style="margin-top:8px"></div>
+  </div>
+  <div class="card">
+    <strong>Historial de ventas (últimas 20)</strong>
+    <table><tbody id="sales-body"></tbody></table>
+  </div>
+  <div class="card">
+    <button class="danger" id="reset">Borrar todos los datos en BD</button>
+    <span class="muted"> Esta acción elimina los registros de Supabase.</span>
+  </div>
+</section>
+
+</main>
+
+<script>
+(function () {
+  // Configuración de Supabase
+  const SUPABASE_URL = "https://ykjwzapdioyfpevxzzqy.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlrand6YXBkaW95ZnBldnh6enF5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE1OTA1OTIsImV4cCI6MjEwNzE2NjU5Mn0.KeHBe4Vev_QEW7sXQEdKv4kIpnbWocpZMPRFX7ccx_k";
+  
+  const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const PAY = { efectivo: "Efectivo", transferencia: "Transferencia", modo: "MODO", tarjeta: "Tarjeta", otro: "Otro" };
+  const $ = (id) => document.getElementById(id);
+  const fmt = (n) => "$" + Math.round(Number(n) || 0).toLocaleString("es-AR");
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const todayKey = () => new Date().toLocaleDateString("sv-SE");
+  const uid = () => Math.random().toString(36).slice(2, 10);
+
+  let data = { products: [], sales: [], expenses: [] };
+  let cart = {};
+
+  async function loadData() {
+    try {
+      const [resProd, resSales, resExp] = await Promise.all([
+        _supabase.from('products').select('*'),
+        _supabase.from('sales').select('*'),
+        _supabase.from('expenses').select('*')
+      ]);
+
+      if (resProd.error) console.error("Error cargando productos:", resProd.error);
+      if (resSales.error) console.error("Error cargando ventas:", resSales.error);
+      if (resExp.error) console.error("Error cargando gastos:", resExp.error);
+
+      data.products = (resProd.data || []).map(p => ({
+        id: p.id,
+        name: p.name,
+        price: Number(p.price),
+        cost: Number(p.cost),
+        stock: Number(p.stock),
+        min: Number(p.min_stock ?? 3)
+      }));
+
+      data.sales = (resSales.data || []).map(s => ({
+        id: s.id,
+        at: s.created_at,
+        date: s.date,
+        items: s.items,
+        total: Number(s.total),
+        profit: Number(s.profit),
+        pay: s.pay
+      }));
+
+      data.expenses = (resExp.data || []).map(e => ({
+        id: e.id,
+        date: e.date,
+        desc: e.description,
+        amount: Number(e.amount)
+      }));
+
+      renderAll();
+    } catch (e) {
+      console.error("Error al conectar con Supabase:", e);
+    }
+  }
+
+  function cartTotal() {
+    return Object.entries(cart).reduce((t, [id, q]) => {
+      const p = data.products.find((x) => x.id === id);
+      return t + (p ? p.price * q : 0);
+    }, 0);
+  }
+
+  function renderProducts() {
+    const query = ($("search-vender").value || "").trim().toLowerCase();
+    const filtered = data.products.filter(p => p.name.toLowerCase().includes(query));
+
+    $("product-grid").innerHTML = filtered.map((p) => {
+      const out = p.stock <= 0;
+      return `<button class="prod ${out ? "out" : ""}" data-id="${p.id}" ${out ? "disabled" : ""}>
+        <span>${esc(p.name)}</span>
+        <span class="price">${fmt(p.price)}</span>
+        <span class="stock ${p.stock <= p.min ? "low" : ""}">Stock: ${p.stock}</span>
+      </button>`;
+    }).join("") || `<p class="muted">${data.products.length ? "No se encontraron productos." : "Cargá productos en la pestaña Stock."}</p>`;
+  }
+
+  function renderCart() {
+    const lines = Object.entries(cart).filter(([, q]) => q > 0);
+    $("cart").innerHTML = lines.length ? lines.map(([id, q]) => {
+      const p = data.products.find((x) => x.id === id);
+      if (!p) return "";
+      return `<div class="cart-line">
+        <span>${esc(p.name)}</span>
+        <span class="qty">
+          <button data-dec="${id}">−</button><span>${q}</span><button data-inc="${id}">+</button>
+          <span style="min-width:70px;text-align:right">${fmt(p.price * q)}</span>
+        </span></div>`;
+    }).join("") : `<p class="muted">Carrito vacío. Tocá un producto para sumarlo.</p>`;
+    $("cart-total").textContent = fmt(cartTotal());
+    $("charge").disabled = !lines.length;
+  }
+
+  function renderStock() {
+    const query = ($("search-stock").value || "").trim().toLowerCase();
+    const filtered = data.products.filter(p => p.name.toLowerCase().includes(query));
+
+    $("stock-body").innerHTML = filtered.map((p) => `<tr>
+      <td>${esc(p.name)}</td>
+      <td class="num">${fmt(p.price)}</td>
+      <td class="num">${fmt(p.cost)}</td>
+      <td class="num ${p.stock <= p.min ? "low" : ""}">
+        <button data-minus="${p.id}">−</button> ${p.stock} <button data-plus="${p.id}">+</button>
+      </td>
+      <td class="num"><button class="danger" data-del="${p.id}">✕</button></td>
+    </tr>`).join("");
+    
+    $("stock-empty").textContent = data.products.length 
+      ? (filtered.length ? "" : "No se encontraron productos coincidentes.") 
+      : "No hay productos todavía.";
+  }
+
+  function renderExpenses() {
+    const rows = [...data.expenses].reverse();
+    $("expense-body").innerHTML = rows.map((e) => `<tr>
+      <td>${esc(e.date)}</td><td>${esc(e.desc)}</td>
+      <td class="num">${fmt(e.amount)}</td>
+      <td class="num"><button class="danger" data-edel="${e.id}">✕</button></td>
+    </tr>`).join("") || `<tr><td class="muted">Sin gastos registrados.</td></tr>`;
+  }
+
+  function renderSummary() {
+    const t = todayKey();
+    const sales = data.sales.filter((s) => s.date === t);
+    const exps = data.expenses.filter((e) => e.date === t);
+    const total = sales.reduce((a, s) => a + s.total, 0);
+    const profit = sales.reduce((a, s) => a + s.profit, 0);
+    const expTotal = exps.reduce((a, e) => a + e.amount, 0);
+
+    $("s-sales").textContent = fmt(total);
+    $("s-count").textContent = sales.length;
+    $("s-profit").textContent = fmt(profit);
+    $("s-exp").textContent = fmt(expTotal);
+    $("s-net").textContent = fmt(profit - expTotal);
+
+    const byPay = {};
+    sales.forEach((s) => { byPay[s.pay] = (byPay[s.pay] || 0) + s.total; });
+    $("pay-body").innerHTML = Object.keys(PAY).filter((k) => byPay[k]).map((k) =>
+      `<tr><td>${PAY[k]}</td><td class="num">${fmt(byPay[k])}</td></tr>`).join("")
+      || `<tr><td class="muted">Sin ventas hoy.</td></tr>`;
+
+    const low = data.products.filter((p) => p.stock <= p.min);
+    $("low-list").innerHTML = low.length
+      ? low.map((p) => `${esc(p.name)} (${p.stock})`).join(" · ")
+      : "Todo en orden.";
+
+    $("sales-body").innerHTML = [...data.sales].reverse().slice(0, 20).map((s) => {
+      const d = new Date(s.at);
+      const hora = d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+      const items = (s.items || []).map((i) => `${i.qty}× ${esc(i.name)}`).join(", ");
+      return `<tr><td>${s.date.slice(5)} ${hora}</td><td>${items}</td><td>${PAY[s.pay]}</td><td class="num">${fmt(s.total)}</td></tr>`;
+    }).join("") || `<tr><td class="muted">Sin ventas todavía.</td></tr>`;
+  }
+
+  function renderAll() {
+    renderProducts(); renderCart(); renderStock(); renderExpenses(); renderSummary();
+  }
+
+  async function charge() {
+    const items = [];
+    let total = 0, profit = 0;
+    const stockUpdates = [];
+
+    for (const [id, q] of Object.entries(cart)) {
+      const p = data.products.find((x) => x.id === id);
+      if (!p || q <= 0) continue;
+      const qty = Math.min(q, p.stock);
+      if (qty <= 0) continue;
+      
+      p.stock -= qty;
+      stockUpdates.push(_supabase.from('products').update({ stock: p.stock }).eq('id', p.id));
+      
+      items.push({ name: p.name, qty, price: p.price });
+      total += p.price * qty;
+      profit += (p.price - p.cost) * qty;
+    }
+    if (!items.length) return;
+
+    const saleRecord = {
+      id: uid(),
+      date: todayKey(),
+      items: items,
+      total: total,
+      profit: profit,
+      pay: $("pay").value
+    };
+
+    const resSale = await _supabase.from('sales').insert([saleRecord]);
+    if (resSale.error) {
+      alert("Error guardando venta en Supabase.");
+      console.error(resSale.error);
+      return;
+    }
+
+    await Promise.all(stockUpdates);
+    cart = {};
+    loadData();
+  }
+
+  async function addProduct() {
+    const name = $("p-name").value.trim();
+    const price = parseFloat($("p-price").value);
+    if (!name || isNaN(price)) { alert("Poné al menos nombre y precio."); return; }
+
+    const newProd = {
+      id: uid(),
+      name: name,
+      price: price,
+      cost: parseFloat($("p-cost").value) || 0,
+      stock: parseInt($("p-stock").value, 10) || 0,
+      min_stock: parseInt($("p-min").value, 10) || 0
+    };
+
+    const { error } = await _supabase.from('products').insert([newProd]);
+    if (error) {
+      alert("Error al agregar producto.");
+      console.error(error);
+      return;
+    }
+
+    ["p-name", "p-price", "p-cost", "p-stock"].forEach((i) => ($(i).value = ""));
+    loadData();
+  }
+
+  async function addExpense() {
+    const desc = $("e-desc").value.trim();
+    const amount = parseFloat($("e-amount").value);
+    if (!desc || isNaN(amount)) { alert("Poné descripción y monto."); return; }
+
+    const newExp = {
+      id: uid(),
+      date: todayKey(),
+      description: desc,
+      amount: amount
+    };
+
+    const { error } = await _supabase.from('expenses').insert([newExp]);
+    if (error) {
+      alert("Error al agregar gasto.");
+      console.error(error);
+      return;
+    }
+
+    $("e-desc").value = ""; $("e-amount").value = "";
+    loadData();
+  }
+
+  async function updateStock(id, newStock) {
+    const { error } = await _supabase.from('products').update({ stock: newStock }).eq('id', id);
+    if (error) console.error("Error al actualizar stock:", error);
+    else loadData();
+  }
+
+  // Navegación
+  document.querySelectorAll("nav .tab").forEach((b) => b.addEventListener("click", () => {
+    document.querySelectorAll("nav .tab").forEach((x) => x.classList.toggle("active", x === b));
+    document.querySelectorAll("main > section").forEach((s) => s.classList.add("hidden"));
+    $("tab-" + b.dataset.tab).classList.remove("hidden");
+    if (b.dataset.tab === "resumen") renderSummary();
+  }));
+
+  // Buscadores
+  $("search-vender").addEventListener("input", renderProducts);
+  $("clear-search-vender").addEventListener("click", () => {
+    $("search-vender").value = "";
+    renderProducts();
+  });
+
+  $("search-stock").addEventListener("input", renderStock);
+  $("clear-search-stock").addEventListener("click", () => {
+    $("search-stock").value = "";
+    renderStock();
+  });
+
+  // Eventos Carrito y Productos
+  $("product-grid").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-id]"); if (!b) return;
+    const p = data.products.find((x) => x.id === b.dataset.id);
+    const inCart = cart[p.id] || 0;
+    if (inCart < p.stock) cart[p.id] = inCart + 1;
+    renderCart();
+  });
+
+  $("cart").addEventListener("click", (e) => {
+    const inc = e.target.dataset.inc, dec = e.target.dataset.dec;
+    if (inc) { const p = data.products.find((x) => x.id === inc); if ((cart[inc] || 0) < p.stock) cart[inc]++; }
+    if (dec) { cart[dec] = (cart[dec] || 0) - 1; if (cart[dec] <= 0) delete cart[dec]; }
+    renderCart();
+  });
+
+  $("clear-cart").addEventListener("click", () => { cart = {}; renderCart(); });
+  $("charge").addEventListener("click", charge);
+  $("add-product").addEventListener("click", addProduct);
+  $("add-expense").addEventListener("click", addExpense);
+
+  $("stock-body").addEventListener("click", async (e) => {
+    const t = e.target;
+    const p = (id) => data.products.find((x) => x.id === id);
+
+    if (t.dataset.plus) {
+      const item = p(t.dataset.plus);
+      await updateStock(item.id, item.stock + 1);
+    }
+    if (t.dataset.minus) {
+      const item = p(t.dataset.minus);
+      if (item.stock > 0) await updateStock(item.id, item.stock - 1);
+    }
+    if (t.dataset.del && confirm("¿Borrar este producto?")) {
+      const { error } = await _supabase.from('products').delete().eq('id', t.dataset.del);
+      if (error) console.error("Error al borrar producto:", error);
+      else loadData();
+    }
+  });
+
+  $("expense-body").addEventListener("click", async (e) => {
+    const id = e.target.dataset.edel;
+    if (id && confirm("¿Borrar este gasto?")) {
+      const { error } = await _supabase.from('expenses').delete().eq('id', id);
+      if (error) console.error("Error al borrar gasto:", error);
+      else loadData();
+    }
+  });
+
+  $("reset").addEventListener("click", async () => {
+    if (confirm("Se borran productos, ventas y gastos de la base de datos. ¿Seguro?")) {
+      await _supabase.from('products').delete().neq('id', '');
+      await _supabase.from('sales').delete().neq('id', '');
+      await _supabase.from('expenses').delete().neq('id', '');
+      cart = {};
+      loadData();
+    }
+  });
+
+  $("today").textContent = new Date().toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" });
+  
+  // Carga inicial de datos desde Supabase
+  loadData();
+})();
+</script>
+</body>
+</html>
