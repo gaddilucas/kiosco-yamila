@@ -272,3 +272,29 @@ h4 { margin: 14px 0 6px; }
 .lista-ventas li { flex-wrap: wrap; }
 .lista-ventas small { color: var(--gris); width: 100%; }
 .pago { font-size: .85rem; color: var(--gris); margin-left: 4px; }
+/* ---------- Productos: eliminar y reporte ---------- */
+.link {
+  margin-top: 12px;
+  padding: 8px 0;
+  border: 0;
+  background: none;
+  color: var(--primario);
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.lista small { color: var(--gris); margin-left: 4px; }
+.ayuda { margin: 0; color: var(--gris); font-size: .85rem; }
+
+/* ---------- Lista de productos para quitar ---------- */
+#r-filtro { width: 100%; margin: 8px 0; }
+#r-lista-productos { max-height: 420px; overflow-y: auto; }
+.btn-peligro {
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: #fde8e8;
+  color: var(--deuda);
+  font-weight: 600;
+  cursor: pointer;
+}

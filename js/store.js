@@ -18,6 +18,19 @@ function avisarError(error) {
 
 const redondear = n => Math.round(n);
 
+// ---------- Fechas y nombres ----------
+// Día local en formato AAAA-MM-DD, para filtrar por día sin problemas de zona horaria
+export function diaLocal(fecha) {
+  const d = new Date(fecha);
+  const mes = String(d.getMonth() + 1).padStart(2, '0');
+  const dia = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mes}-${dia}`;
+}
+
+// Forma comparable de un nombre: sin mayúsculas, tildes ni espacios de más
+const claveNombre = s =>
+  String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ');
+
 // ---------- Carga desde Supabase ----------
 export async function cargarDatos() {
   const { productos, clientes, ventas } = await db.cargarTodo();
@@ -58,12 +71,36 @@ export async function cargarDatos() {
 // ---------- Productos ----------
 export const getProductos = () => datos.productos;
 
+// Busca un producto por nombre sin importar mayúsculas ni tildes
+export const buscarProductoPorNombre = nombre =>
+  datos.productos.find(p => claveNombre(p.nombre) === claveNombre(nombre)) ?? null;
+
 export async function agregarProducto({ nombre, precio, tipo }) {
   const producto = { id: crypto.randomUUID(), nombre, precio, tipo };
   await db.insertarProducto(producto);
   datos.productos.push(producto);
-  datos.productos.sort((a, b) => a.nombre.localeCompare(b.nombre));
+  ordenarProductos();
   notificar();
+}
+
+// Cambia precio y tipo de un producto existente. Las ventas viejas conservan el precio con que se vendieron
+export async function actualizarProducto(id, { precio, tipo }) {
+  await db.actualizarProducto(id, { precio, tipo });
+  const p = datos.productos.find(x => x.id === id);
+  if (p) Object.assign(p, { precio, tipo });
+  notificar();
+}
+
+export async function eliminarProducto(id) {
+  await db.eliminarProducto(id);
+  datos.productos = datos.productos.filter(p => p.id !== id);
+  // Las ventas viejas mantienen nombre y precio; solo se corta el vínculo con el producto
+  datos.ventas.forEach(v => v.items.forEach(it => { if (it.id === id) it.id = null; }));
+  notificar();
+}
+
+function ordenarProductos() {
+  datos.productos.sort((a, b) => a.nombre.localeCompare(b.nombre));
 }
 
 // ---------- Carrito (solo en memoria) ----------
@@ -110,8 +147,9 @@ export async function cobrarVenta({ medioPago = 'efectivo', clienteId = null } =
     medio_pago: medioPago,
     cliente_id: medioPago === 'cc' ? clienteId : null,
   };
+  // Si el producto se eliminó mientras estaba en el ticket, la línea queda sin vínculo pero con nombre y precio
   const items = carrito.map(i => ({
-    producto_id: i.id,
+    producto_id: datos.productos.some(p => p.id === i.id) ? i.id : null,
     nombre: i.nombre,
     precio: i.precio,
     cantidad: i.cantidad,
@@ -165,14 +203,32 @@ export function ultimasVentas(n) {
     .slice(0, n);
 }
 
+// Ventas de un día (AAAA-MM-DD), de la más temprana a la más tardía
+export function ventasDelDia(dia) {
+  return datos.ventas
+    .filter(v => diaLocal(v.fecha) === dia)
+    .sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+}
+
+// Movimientos de cuenta corriente de un día, con el nombre del cliente
+export function movimientosCCDelDia(dia) {
+  return datos.clientesCC
+    .flatMap(c => c.movimientos
+      .filter(m => diaLocal(m.fecha) === dia)
+      .map(m => ({ ...m, cliente: c.nombre })))
+    .sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+}
+
 // Ranking de productos vendidos (para la barra por defecto y el resumen)
 export function rankingProductos() {
   const mapa = new Map();
   datos.ventas.forEach(v => v.items.forEach(i => {
-    const r = mapa.get(i.id) || { id: i.id, nombre: i.nombre, cantidad: 0, total: 0 };
+    // Si el producto fue eliminado (id null), se agrupa por nombre
+    const clave = i.id ?? `nombre:${i.nombre}`;
+    const r = mapa.get(clave) || { id: i.id, nombre: i.nombre, cantidad: 0, total: 0 };
     r.cantidad++;
     r.total += i.subtotal;
-    mapa.set(i.id, r);
+    mapa.set(clave, r);
   }));
   return [...mapa.values()].sort((a, b) => b.cantidad - a.cantidad || b.total - a.total);
 }
@@ -219,15 +275,17 @@ export function saldoCliente(cliente) {
 }
 
 // ---------- Resumen ----------
+
+// Solo cuenta lo cobrado (efectivo y transferencia). Lo fiado en cuenta corriente se muestra aparte.
 export function resumen() {
-  const hoy = new Date().toDateString();
-  const ventasHoy = datos.ventas.filter(v => new Date(v.fecha).toDateString() === hoy);
-  const totalHoy = ventasHoy.reduce((s, v) => s + v.total, 0);
+  const ventasHoy = ventasDelDia(diaLocal(new Date()));
+  const cobradasHoy = ventasHoy.filter(v => v.medioPago !== 'cc');
+  const totalHoy = cobradasHoy.reduce((s, v) => s + v.total, 0);
 
   return {
     totalHoy,
-    cantidadHoy: ventasHoy.length,
-    ticketPromedio: ventasHoy.length ? Math.round(totalHoy / ventasHoy.length) : 0,
+    cantidadHoy: cobradasHoy.length,
+    ticketPromedio: cobradasHoy.length ? Math.round(totalHoy / cobradasHoy.length) : 0,
     fiadoHoy: ventasHoy.filter(v => v.medioPago === 'cc').reduce((s, v) => s + v.total, 0),
     totalHistorico: datos.ventas.reduce((s, v) => s + v.total, 0),
     deudaCC: datos.clientesCC.reduce((s, c) => s + Math.max(saldoCliente(c), 0), 0),

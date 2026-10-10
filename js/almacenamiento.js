@@ -22,7 +22,7 @@ export async function cargarTodo() {
     sb.from('productos').select('id, nombre, precio, tipo').order('nombre'),
     sb.from('clientes').select('id, nombre, movimientos(tipo, monto, nota, fecha)').order('creado_en'),
     sb.from('ventas')
-    .select('id, fecha, total, medio_pago, cliente_id, venta_items(producto_id, nombre, precio, cantidad, subtotal)')
+      .select('id, fecha, total, medio_pago, cliente_id, venta_items(producto_id, nombre, precio, cantidad, subtotal)')
       .order('fecha'),
   ]);
   if (productos.error) throw productos.error;
@@ -34,6 +34,16 @@ export async function cargarTodo() {
 // ---------- Escritura ----------
 export async function insertarProducto(producto) {
   const { error } = await sb.from('productos').insert(producto);
+  if (error) throw error;
+}
+
+export async function actualizarProducto(id, cambios) {
+  const { error } = await sb.from('productos').update(cambios).eq('id', id);
+  if (error) throw error;
+}
+
+export async function eliminarProducto(id) {
+  const { error } = await sb.from('productos').delete().eq('id', id);
   if (error) throw error;
 }
 
