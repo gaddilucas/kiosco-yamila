@@ -33,8 +33,13 @@
       if (resExp.error) throw resExp.error;
 
       data.products = (resProd.data || []).map(p => ({
-        id: p.id, name: p.name, price: Number(p.price),
-        cost: Number(p.cost), stock: Number(p.stock), min: Number(p.min_stock ?? 3)
+        id: p.id,
+        name: p.name,
+        price: Number(p.price),
+        cost: Number(p.cost),
+        stock: p.stock !== null ? Number(p.stock) : null,
+        min: Number(p.min_stock ?? 3),
+        isWeight: Boolean(p.is_weight || p.stock === null)
       }));
 
       data.sales = (resSales.data || []).map(s => ({
@@ -68,11 +73,15 @@
     const filtered = data.products.filter(p => p.name.toLowerCase().includes(query));
 
     $("product-grid").innerHTML = filtered.map((p) => {
-      const out = p.stock <= 0;
+      const out = !p.isWeight && p.stock <= 0;
+      const subLabel = p.isWeight 
+        ? `<span class="stock">Al peso (x Kg)</span>` 
+        : `<span class="stock ${p.stock <= p.min ? "low" : ""}">Stock: ${p.stock}</span>`;
+
       return `<button class="prod ${out ? "out" : ""}" data-id="${p.id}" ${out ? "disabled" : ""}>
         <span>${esc(p.name)}</span>
-        <span class="price">${fmt(p.price)}</span>
-        <span class="stock ${p.stock <= p.min ? "low" : ""}">Stock: ${p.stock}</span>
+        <span class="price">${fmt(p.price)} ${p.isWeight ? '/ kg' : ''}</span>
+        ${subLabel}
       </button>`;
     }).join("") || `<p class="muted">${data.products.length ? "No se encontraron productos." : "Cargá productos en la pestaña Stock."}</p>`;
   }
@@ -82,10 +91,15 @@
     $("cart").innerHTML = lines.length ? lines.map(([id, q]) => {
       const p = data.products.find((x) => x.id === id);
       if (!p) return "";
+      
+      const qtyText = p.isWeight ? `${q} kg` : `${q}`;
+      
       return `<div class="cart-line">
-        <span>${esc(p.name)}</span>
+        <span>${esc(p.name)} ${p.isWeight ? '<small class="muted">(x Kg)</small>' : ''}</span>
         <span class="qty">
-          <button data-dec="${id}">−</button><span>${q}</span><button data-inc="${id}">+</button>
+          <button data-dec="${id}">−</button>
+          <span>${qtyText}</span>
+          <button data-inc="${id}">+</button>
           <span style="min-width:70px;text-align:right">${fmt(p.price * q)}</span>
         </span></div>`;
     }).join("") : `<p class="muted">Carrito vacío.</p>`;
@@ -98,15 +112,21 @@
     const query = ($("search-stock").value || "").trim().toLowerCase();
     const filtered = data.products.filter(p => p.name.toLowerCase().includes(query));
 
-    $("stock-body").innerHTML = filtered.map((p) => `<tr>
-      <td>${esc(p.name)}</td>
-      <td class="num">${fmt(p.price)}</td>
-      <td class="num">${fmt(p.cost)}</td>
-      <td class="num ${p.stock <= p.min ? "low" : ""}">
-        <button data-minus="${p.id}">−</button> ${p.stock} <button data-plus="${p.id}">+</button>
-      </td>
-      <td class="num"><button class="danger" data-del="${p.id}">✕</button></td>
-    </tr>`).join("");
+    $("stock-body").innerHTML = filtered.map((p) => {
+      const stockCol = p.isWeight 
+        ? `<span class="muted">Al peso</span>`
+        : `<button data-minus="${p.id}">−</button> ${p.stock} <button data-plus="${p.id}">+</button>`;
+
+      return `<tr>
+        <td>${esc(p.name)}</td>
+        <td class="num">${fmt(p.price)} ${p.isWeight ? '/ kg' : ''}</td>
+        <td class="num">${fmt(p.cost)}</td>
+        <td class="num ${!p.isWeight && p.stock <= p.min ? "low" : ""}">
+          ${stockCol}
+        </td>
+        <td class="num"><button class="danger" data-del="${p.id}">✕</button></td>
+      </tr>`;
+    }).join("");
     
     $("stock-empty").textContent = data.products.length 
       ? (filtered.length ? "" : "No se encontraron productos.") 
@@ -142,7 +162,7 @@
       `<tr><td>${PAY[k]}</td><td class="num">${fmt(byPay[k])}</td></tr>`).join("")
       || `<tr><td class="muted">Sin ventas hoy.</td></tr>`;
 
-    const low = data.products.filter((p) => p.stock <= p.min);
+    const low = data.products.filter((p) => !p.isWeight && p.stock <= p.min);
     $("low-list").innerHTML = low.length
       ? low.map((p) => `${esc(p.name)} (${p.stock})`).join(" · ")
       : "Todo en orden.";
@@ -150,7 +170,7 @@
     $("sales-body").innerHTML = [...data.sales].reverse().slice(0, 20).map((s) => {
       const d = new Date(s.at);
       const hora = d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
-      const items = (s.items || []).map((i) => `${i.qty}× ${esc(i.name)}`).join(", ");
+      const items = (s.items || []).map((i) => `${i.qty} ${i.name}`).join(", ");
       return `<tr><td>${s.date.slice(5)} ${hora}</td><td>${items}</td><td>${PAY[s.pay]}</td><td class="num">${fmt(s.total)}</td></tr>`;
     }).join("") || `<tr><td class="muted">Sin ventas todavía.</td></tr>`;
   }
@@ -173,13 +193,17 @@
     for (const [id, q] of Object.entries(cart)) {
       const p = data.products.find((x) => x.id === id);
       if (!p || q <= 0) continue;
-      const qty = Math.min(q, p.stock);
-      if (qty <= 0) continue;
       
-      p.stock -= qty;
-      stockUpdates.push(_supabase.from('products').update({ stock: p.stock }).eq('id', p.id));
+      let qty = q;
+      if (!p.isWeight) {
+        qty = Math.min(q, p.stock);
+        if (qty <= 0) continue;
+        p.stock -= qty;
+        stockUpdates.push(_supabase.from('products').update({ stock: p.stock }).eq('id', p.id));
+      }
       
-      items.push({ name: p.name, qty, price: p.price });
+      const qtyLabel = p.isWeight ? `${qty}kg` : `${qty}x`;
+      items.push({ name: p.name, qty: qtyLabel, price: p.price });
       total += p.price * qty;
       profit += (p.price - p.cost) * qty;
     }
@@ -200,7 +224,7 @@
       return;
     }
 
-    await Promise.all(stockUpdates);
+    if (stockUpdates.length) await Promise.all(stockUpdates);
     cart = {};
     loadData();
   }
@@ -208,6 +232,9 @@
   async function addProduct() {
     const name = $("p-name").value.trim();
     const price = parseFloat($("p-price").value);
+    const type = $("p-type").value;
+    const isWeight = type === "weight";
+
     if (!name || isNaN(price)) { alert("Poné al menos nombre y precio."); return; }
 
     const newProd = {
@@ -215,8 +242,9 @@
       name: name,
       price: price,
       cost: parseFloat($("p-cost").value) || 0,
-      stock: parseInt($("p-stock").value, 10) || 0,
-      min_stock: parseInt($("p-min").value, 10) || 0
+      stock: isWeight ? null : (parseInt($("p-stock").value, 10) || 0),
+      min_stock: isWeight ? 0 : (parseInt($("p-min").value, 10) || 0),
+      is_weight: isWeight
     };
 
     const { error } = await _supabase.from('products').insert([newProd]);
@@ -248,6 +276,15 @@
   // ==========================================
   // 5. EVENTOS DEL DOM (LISTENERS)
   // ==========================================
+  // Cambio de tipo de producto en el formulario
+  $("p-type").addEventListener("change", (e) => {
+    const isW = e.target.value === "weight";
+    $("box-stock").style.display = isW ? "none" : "block";
+    $("box-min").style.display = isW ? "none" : "block";
+    $("lbl-price").textContent = isW ? "Precio x Kg" : "Precio venta x Un.";
+    $("lbl-cost").textContent = isW ? "Costo x Kg" : "Costo x Un.";
+  });
+
   document.querySelectorAll("nav .tab").forEach((b) => b.addEventListener("click", () => {
     document.querySelectorAll("nav .tab").forEach((x) => x.classList.toggle("active", x === b));
     document.querySelectorAll("main > section").forEach((s) => s.classList.add("hidden"));
@@ -263,15 +300,45 @@
   $("product-grid").addEventListener("click", (e) => {
     const b = e.target.closest("[data-id]"); if (!b) return;
     const p = data.products.find((x) => x.id === b.dataset.id);
-    const inCart = cart[p.id] || 0;
-    if (inCart < p.stock) cart[p.id] = inCart + 1;
+    
+    if (p.isWeight) {
+      const inputVal = prompt(`Ingresá el peso para ${p.name} (en Kilos, ej: 0.5 para 500g):`, "1");
+      if (!inputVal) return;
+      const w = parseFloat(inputVal.replace(',', '.'));
+      if (isNaN(w) || w <= 0) return alert("Peso inválido.");
+      cart[p.id] = (cart[p.id] || 0) + w;
+    } else {
+      const inCart = cart[p.id] || 0;
+      if (inCart < p.stock) cart[p.id] = inCart + 1;
+    }
     renderCart();
   });
 
   $("cart").addEventListener("click", (e) => {
     const inc = e.target.dataset.inc, dec = e.target.dataset.dec;
-    if (inc) { const p = data.products.find((x) => x.id === inc); if ((cart[inc] || 0) < p.stock) cart[inc]++; }
-    if (dec) { cart[dec] = (cart[dec] || 0) - 1; if (cart[dec] <= 0) delete cart[dec]; }
+    
+    if (inc) {
+      const p = data.products.find((x) => x.id === inc);
+      if (p.isWeight) {
+        const inputVal = prompt(`Sumar peso a ${p.name} (en Kilos, ej: 0.250 para 250g):`, "0.5");
+        if (inputVal) {
+          const w = parseFloat(inputVal.replace(',', '.'));
+          if (!isNaN(w) && w > 0) cart[inc] += w;
+        }
+      } else {
+        if ((cart[inc] || 0) < p.stock) cart[inc]++;
+      }
+    }
+    
+    if (dec) {
+      const p = data.products.find((x) => x.id === dec);
+      if (p.isWeight) {
+        delete cart[dec];
+      } else {
+        cart[dec] = (cart[dec] || 0) - 1;
+        if (cart[dec] <= 0) delete cart[dec];
+      }
+    }
     renderCart();
   });
 
@@ -284,19 +351,25 @@
     const t = e.target;
     const p = (id) => data.products.find((x) => x.id === id);
 
-    if (t.dataset.plus) await updateStock(p(t.dataset.plus).id, p(t.dataset.plus).stock + 1);
-    if (t.dataset.minus && p(t.dataset.minus).stock > 0) await updateStock(p(t.dataset.minus).id, p(t.dataset.minus).stock - 1);
+    if (t.dataset.plus) {
+      const item = p(t.dataset.plus);
+      if (!item.isWeight) await updateStock(item.id, item.stock + 1);
+    }
+    if (t.dataset.minus) {
+      const item = p(t.dataset.minus);
+      if (!item.isWeight && item.stock > 0) await updateStock(item.id, item.stock - 1);
+    }
     if (t.dataset.del && confirm("¿Borrar este producto?")) {
-      await _supabase.from('products').delete().eq('id', t.dataset.del);
-      loadData();
+      const { error } = await _supabase.from('products').delete().eq('id', t.dataset.del);
+      if (!error) loadData();
     }
   });
 
   $("expense-body").addEventListener("click", async (e) => {
     const id = e.target.dataset.edel;
     if (id && confirm("¿Borrar este gasto?")) {
-      await _supabase.from('expenses').delete().eq('id', id);
-      loadData();
+      const { error } = await _supabase.from('expenses').delete().eq('id', id);
+      if (!error) loadData();
     }
   });
 

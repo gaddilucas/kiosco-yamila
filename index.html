@@ -3,20 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Kiosco - Supabase</title>
+  <title>Kiosco & Verdulería - Supabase</title>
   <link rel="stylesheet" href="style.css">
   <!-- Libreria Oficial de Supabase -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
   <header>
-    <h1>Kiosco</h1>
+    <h1>Kiosco & Verdulería</h1>
     <span class="muted" id="today"></span>
   </header>
   
   <nav>
     <button class="tab active" data-tab="vender">Vender</button>
-    <button class="tab" data-tab="stock">Stock</button>
+    <button class="tab" data-tab="stock">Stock / Productos</button>
     <button class="tab" data-tab="gastos">Gastos</button>
     <button class="tab" data-tab="resumen">Resumen</button>
   </nav>
@@ -58,13 +58,20 @@
     <!-- STOCK -->
     <section id="tab-stock" class="hidden">
       <div class="card">
-        <strong>Nuevo producto</strong>
+        <strong>Nuevo producto / Verdura</strong>
         <div class="row" style="margin-top:10px">
-          <div><label for="p-name">Nombre</label><input id="p-name" placeholder="Ej: Coca 500ml"></div>
-          <div><label for="p-price">Precio venta</label><input id="p-price" type="number" min="0" step="any"></div>
-          <div><label for="p-cost">Costo</label><input id="p-cost" type="number" min="0" step="any"></div>
-          <div><label for="p-stock">Stock</label><input id="p-stock" type="number" min="0" step="1"></div>
-          <div><label for="p-min">Mínimo</label><input id="p-min" type="number" min="0" step="1" value="3"></div>
+          <div>
+            <label for="p-type">Venta por</label>
+            <select id="p-type">
+              <option value="unit">Unidad</option>
+              <option value="weight">Peso (Kg / Verdura)</option>
+            </select>
+          </div>
+          <div><label for="p-name">Nombre</label><input id="p-name" placeholder="Ej: Papa / Coca 500ml"></div>
+          <div><label for="p-price" id="lbl-price">Precio venta x Un.</label><input id="p-price" type="number" min="0" step="any"></div>
+          <div><label for="p-cost" id="lbl-cost">Costo x Un.</label><input id="p-cost" type="number" min="0" step="any"></div>
+          <div id="box-stock"><label for="p-stock">Stock</label><input id="p-stock" type="number" min="0" step="1"></div>
+          <div id="box-min"><label for="p-min">Mínimo</label><input id="p-min" type="number" min="0" step="1" value="3"></div>
           <button class="primary" id="add-product">Agregar</button>
         </div>
       </div>
@@ -74,7 +81,7 @@
           <button class="clear-btn" id="clear-search-stock">✕</button>
         </div>
         <table>
-          <thead><tr><th>Producto</th><th class="num">Precio</th><th class="num">Costo</th><th class="num">Stock</th><th></th></tr></thead>
+          <thead><tr><th>Producto</th><th class="num">Precio</th><th class="num">Costo</th><th class="num">Stock / Tipo</th><th></th></tr></thead>
           <tbody id="stock-body"></tbody>
         </table>
         <p class="muted" id="stock-empty"></p>
