@@ -8,14 +8,129 @@
 
   const PAY = { efectivo: "Efectivo", transferencia: "Transferencia", modo: "MODO", tarjeta: "Tarjeta", otro: "Otro" };
   const $ = (id) => document.getElementById(id);
+  const asNumber = (value, fallback = 0) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
+  };
   const fmt = (n) => "$" + Math.round(Number(n) || 0).toLocaleString("es-AR");
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const todayKey = () => new Date().toLocaleDateString("sv-SE");
   const uid = () => Math.random().toString(36).slice(2, 10);
+  const formatWeight = (n) => String(Number(n)).replace(/\.0+$/, "");
 
   // ESTADO GLOBAL
   let data = { products: [], sales: [], expenses: [] };
   let cart = {};
+  let summaryRange = { from: todayKey(), to: todayKey() };
+
+  function normalizeProduct(p) {
+    const isWeight = Boolean(p.is_weight || p.stock === null || p.stock === undefined);
+    return {
+      id: p.id,
+      name: String(p.name || "").trim(),
+      price: asNumber(p.price, 0),
+      cost: asNumber(p.cost, 0),
+      stock: isWeight ? null : Math.max(0, asNumber(p.stock, 0)),
+      min: Math.max(0, asNumber(p.min_stock, 3)),
+      isWeight
+    };
+  }
+
+  function getProductById(id) {
+    return data.products.find((x) => x.id === id);
+  }
+
+  function safeQty(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function getRangeFromInputs() {
+    const from = $("summary-from")?.value || todayKey();
+    const to = $("summary-to")?.value || todayKey();
+    return { from, to };
+  }
+
+  function setRangeInputs(range) {
+    if (!$("summary-from") || !$("summary-to")) return;
+    $("summary-from").value = range.from || todayKey();
+    $("summary-to").value = range.to || todayKey();
+  }
+
+  function inDateRange(dateValue, from, to) {
+    if (!dateValue) return false;
+    if (!from && !to) return true;
+    if (from && dateValue < from) return false;
+    if (to && dateValue > to) return false;
+    return true;
+  }
+
+  function getFilteredSummarySales() {
+    const { from, to } = summaryRange;
+    return data.sales.filter((s) => inDateRange(s.date, from, to));
+  }
+
+  function getFilteredSummaryExpenses() {
+    const { from, to } = summaryRange;
+    return data.expenses.filter((e) => inDateRange(e.date, from, to));
+  }
+
+  function renderSummary() {
+    const sales = getFilteredSummarySales();
+    const exps = getFilteredSummaryExpenses();
+    const total = sales.reduce((a, s) => a + s.total, 0);
+    const profit = sales.reduce((a, s) => a + s.profit, 0);
+    const expTotal = exps.reduce((a, e) => a + e.amount, 0);
+
+    $("s-sales").textContent = fmt(total);
+    $("s-count").textContent = sales.length;
+    $("s-profit").textContent = fmt(profit);
+    $("s-exp").textContent = fmt(expTotal);
+    $("s-net").textContent = fmt(profit - expTotal);
+
+    const byPay = {};
+    sales.forEach((s) => { byPay[s.pay] = (byPay[s.pay] || 0) + s.total; });
+    $("pay-body").innerHTML = Object.keys(PAY).filter((k) => byPay[k]).map((k) =>
+      `<tr><td>${PAY[k]}</td><td class="num">${fmt(byPay[k])}</td></tr>`).join("")
+      || `<tr><td class="muted">Sin ventas en el rango.</td></tr>`;
+
+    const low = data.products.filter((p) => !p.isWeight && p.stock <= p.min);
+    $("low-list").innerHTML = low.length
+      ? low.map((p) => `${esc(p.name)} (${p.stock})`).join(" · ")
+      : "Todo en orden.";
+
+    $("sales-body").innerHTML = [...data.sales].reverse().slice(0, 20).map((s) => {
+      const d = new Date(s.at);
+      const hora = d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+      const items = (s.items || []).map((i) => `${i.qty} ${i.name}`).join(", ");
+      return `<tr><td>${s.date.slice(5)} ${hora}</td><td>${items}</td><td>${PAY[s.pay]}</td><td class="num">${fmt(s.total)}</td></tr>`;
+    }).join("") || `<tr><td class="muted">Sin ventas todavía.</td></tr>`;
+  }
+
+  function applySummaryFilter() {
+    summaryRange = getRangeFromInputs();
+    renderSummary();
+  }
+
+  function exportCsv() {
+    const sales = getFilteredSummarySales();
+    const exps = getFilteredSummaryExpenses();
+
+    const rows = [
+      ["tipo", "fecha", "descripcion", "monto", "medio_pago"],
+      ...sales.map((s) => ["venta", s.date, (s.items || []).map((i) => `${i.qty} ${i.name}`).join(" | "), String(s.total), s.pay]),
+      ...exps.map((e) => ["gasto", e.date, e.desc, String(e.amount), "-"])
+    ];
+
+    const csv = rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `resumen-${summaryRange.from || "inicio"}-to-${summaryRange.to || "fin"}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   // ==========================================
   // 2. CONEXIÓN A BASE DE DATOS (FETCH)
@@ -32,15 +147,7 @@
       if (resSales.error) throw resSales.error;
       if (resExp.error) throw resExp.error;
 
-      data.products = (resProd.data || []).map(p => ({
-        id: p.id,
-        name: p.name,
-        price: Number(p.price),
-        cost: Number(p.cost),
-        stock: p.stock !== null ? Number(p.stock) : null,
-        min: Number(p.min_stock ?? 3),
-        isWeight: Boolean(p.is_weight || p.stock === null)
-      }));
+      data.products = (resProd.data || []).map(normalizeProduct);
 
       data.sales = (resSales.data || []).map(s => ({
         id: s.id, at: s.created_at, date: s.date,
@@ -142,79 +249,61 @@
     </tr>`).join("") || `<tr><td class="muted">Sin gastos registrados.</td></tr>`;
   }
 
-  function renderSummary() {
-    const t = todayKey();
-    const sales = data.sales.filter((s) => s.date === t);
-    const exps = data.expenses.filter((e) => e.date === t);
-    const total = sales.reduce((a, s) => a + s.total, 0);
-    const profit = sales.reduce((a, s) => a + s.profit, 0);
-    const expTotal = exps.reduce((a, e) => a + e.amount, 0);
-
-    $("s-sales").textContent = fmt(total);
-    $("s-count").textContent = sales.length;
-    $("s-profit").textContent = fmt(profit);
-    $("s-exp").textContent = fmt(expTotal);
-    $("s-net").textContent = fmt(profit - expTotal);
-
-    const byPay = {};
-    sales.forEach((s) => { byPay[s.pay] = (byPay[s.pay] || 0) + s.total; });
-    $("pay-body").innerHTML = Object.keys(PAY).filter((k) => byPay[k]).map((k) =>
-      `<tr><td>${PAY[k]}</td><td class="num">${fmt(byPay[k])}</td></tr>`).join("")
-      || `<tr><td class="muted">Sin ventas hoy.</td></tr>`;
-
-    const low = data.products.filter((p) => !p.isWeight && p.stock <= p.min);
-    $("low-list").innerHTML = low.length
-      ? low.map((p) => `${esc(p.name)} (${p.stock})`).join(" · ")
-      : "Todo en orden.";
-
-    $("sales-body").innerHTML = [...data.sales].reverse().slice(0, 20).map((s) => {
-      const d = new Date(s.at);
-      const hora = d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
-      const items = (s.items || []).map((i) => `${i.qty} ${i.name}`).join(", ");
-      return `<tr><td>${s.date.slice(5)} ${hora}</td><td>${items}</td><td>${PAY[s.pay]}</td><td class="num">${fmt(s.total)}</td></tr>`;
-    }).join("") || `<tr><td class="muted">Sin ventas todavía.</td></tr>`;
-  }
-
   // ==========================================
   // 4. LÓGICA DE NEGOCIO (ACCIONES)
   // ==========================================
   function cartTotal() {
-    return Object.entries(cart).reduce((t, [id, q]) => {
-      const p = data.products.find((x) => x.id === id);
+    return Object.entries(cart).reduce((t, [id, quantity]) => {
+      const p = getProductById(id);
+      const q = safeQty(quantity);
       return t + (p ? p.price * q : 0);
     }, 0);
   }
 
   async function charge() {
-    const items = [];
-    let total = 0, profit = 0;
-    const stockUpdates = [];
+    const saleItems = [];
+    let total = 0;
+    let profit = 0;
 
-    for (const [id, q] of Object.entries(cart)) {
-      const p = data.products.find((x) => x.id === id);
-      if (!p || q <= 0) continue;
-      
-      let qty = q;
+    for (const [id, rawQty] of Object.entries(cart)) {
+      const p = getProductById(id);
+      const qty = safeQty(rawQty);
+      if (!p || qty <= 0) continue;
+
+      let finalQty = qty;
       if (!p.isWeight) {
-        qty = Math.min(q, p.stock);
-        if (qty <= 0) continue;
-        p.stock -= qty;
-        stockUpdates.push(_supabase.from('products').update({ stock: p.stock }).eq('id', p.id));
+        finalQty = Math.floor(qty);
+        if (finalQty <= 0 || (p.stock || 0) < finalQty) {
+          alert(`No hay stock suficiente para ${p.name}.`);
+          return;
+        }
+      } else {
+        finalQty = qty;
       }
-      
-      const qtyLabel = p.isWeight ? `${qty}kg` : `${qty}x`;
-      items.push({ name: p.name, qty: qtyLabel, price: p.price });
-      total += p.price * qty;
-      profit += (p.price - p.cost) * qty;
+
+      saleItems.push({
+        productId: p.id,
+        name: p.name,
+        qty: p.isWeight ? `${formatWeight(finalQty)}kg` : `${finalQty}x`,
+        price: p.price,
+        unitQty: finalQty
+      });
+
+      total += p.price * finalQty;
+      profit += (p.price - p.cost) * finalQty;
     }
-    if (!items.length) return;
+
+    if (!saleItems.length) {
+      alert("No hay productos válidos en el carrito.");
+      return;
+    }
 
     const saleRecord = {
       id: uid(),
       date: todayKey(),
-      items: items,
-      total: total,
-      profit: profit,
+      items: saleItems.map((i) => ({ name: i.name, qty: i.qty, price: i.price })),
+      total: Number(total.toFixed(2)),
+      profit: Number(profit.toFixed(2)),
       pay: $("pay").value
     };
 
@@ -224,7 +313,19 @@
       return;
     }
 
+    const stockUpdates = saleItems
+      .filter((item) => {
+        const p = getProductById(item.productId);
+        return p && !p.isWeight;
+      })
+      .map((item) => {
+        const p = getProductById(item.productId);
+        const nextStock = Math.max(0, (p.stock || 0) - Math.floor(item.unitQty));
+        return _supabase.from('products').update({ stock: nextStock }).eq('id', p.id);
+      });
+
     if (stockUpdates.length) await Promise.all(stockUpdates);
+
     cart = {};
     loadData();
   }
@@ -235,22 +336,62 @@
     const type = $("p-type").value;
     const isWeight = type === "weight";
 
-    if (!name || isNaN(price)) { alert("Poné al menos nombre y precio."); return; }
+    if (!name || Number.isNaN(price) || price <= 0) {
+      alert("Poné un nombre y un precio válido.");
+      return;
+    }
 
-    const newProd = {
-      id: uid(),
-      name: name,
-      price: price,
-      cost: parseFloat($("p-cost").value) || 0,
-      stock: isWeight ? null : (parseInt($("p-stock").value, 10) || 0),
-      min_stock: isWeight ? 0 : (parseInt($("p-min").value, 10) || 0),
-      is_weight: isWeight
-    };
+    const normalizedName = name.trim();
+    const existing = data.products.find((p) => p.name.trim().toLowerCase() === normalizedName.toLowerCase());
+    const stockValue = isWeight ? null : Math.max(0, parseInt($("p-stock").value, 10) || 0);
+    const minValue = isWeight ? 0 : Math.max(0, parseInt($("p-min").value, 10) || 0);
+    const costValue = Math.max(0, parseFloat($("p-cost").value) || 0);
 
-    const { error } = await _supabase.from('products').insert([newProd]);
-    if (error) return alert("Error al agregar producto.");
+    if (existing && existing.isWeight !== isWeight) {
+      alert("Ya existe un producto con ese nombre y tiene un tipo distinto. Cambiá el nombre o borra el anterior.");
+      return;
+    }
 
-    ["p-name", "p-price", "p-cost", "p-stock"].forEach((i) => ($(i).value = ""));
+    if (existing) {
+      const { error } = await _supabase.from('products').update({
+        name: normalizedName,
+        price: price,
+        cost: costValue,
+        stock: stockValue,
+        min_stock: minValue,
+        is_weight: isWeight
+      }).eq('id', existing.id);
+
+      if (error) {
+        alert("Error al actualizar el producto.");
+        console.error(error);
+        return;
+      }
+    } else {
+      const newProd = {
+        id: uid(),
+        name: normalizedName,
+        price: price,
+        cost: costValue,
+        stock: stockValue,
+        min_stock: minValue,
+        is_weight: isWeight
+      };
+
+      const { error } = await _supabase.from('products').insert([newProd]);
+      if (error) {
+        alert("Error al agregar producto.");
+        console.error(error);
+        return;
+      }
+    }
+
+    ["p-name", "p-price", "p-cost", "p-stock", "p-min"].forEach((i) => ($(i).value = ""));
+    $("p-type").value = "unit";
+    $("box-stock").style.display = "block";
+    $("box-min").style.display = "block";
+    $("lbl-price").textContent = "Precio venta x Un.";
+    $("lbl-cost").textContent = "Costo x Un.";
     loadData();
   }
 
@@ -296,46 +437,55 @@
   $("clear-search-vender").addEventListener("click", () => { $("search-vender").value = ""; renderProducts(); });
   $("search-stock").addEventListener("input", renderStock);
   $("clear-search-stock").addEventListener("click", () => { $("search-stock").value = ""; renderStock(); });
+  $("apply-summary").addEventListener("click", applySummaryFilter);
+  $("export-csv").addEventListener("click", exportCsv);
 
   $("product-grid").addEventListener("click", (e) => {
     const b = e.target.closest("[data-id]"); if (!b) return;
-    const p = data.products.find((x) => x.id === b.dataset.id);
-    
+    const p = getProductById(b.dataset.id);
+    if (!p) return;
+
     if (p.isWeight) {
       const inputVal = prompt(`Ingresá el peso para ${p.name} (en Kilos, ej: 0.5 para 500g):`, "1");
       if (!inputVal) return;
       const w = parseFloat(inputVal.replace(',', '.'));
       if (isNaN(w) || w <= 0) return alert("Peso inválido.");
-      cart[p.id] = (cart[p.id] || 0) + w;
+      cart[p.id] = safeQty(cart[p.id]) + w;
     } else {
-      const inCart = cart[p.id] || 0;
-      if (inCart < p.stock) cart[p.id] = inCart + 1;
+      const inCart = Math.floor(safeQty(cart[p.id]));
+      if (inCart < (p.stock || 0)) cart[p.id] = inCart + 1;
     }
     renderCart();
   });
 
   $("cart").addEventListener("click", (e) => {
     const inc = e.target.dataset.inc, dec = e.target.dataset.dec;
-    
+
     if (inc) {
-      const p = data.products.find((x) => x.id === inc);
+      const p = getProductById(inc);
+      if (!p) return;
+
       if (p.isWeight) {
         const inputVal = prompt(`Sumar peso a ${p.name} (en Kilos, ej: 0.250 para 250g):`, "0.5");
         if (inputVal) {
           const w = parseFloat(inputVal.replace(',', '.'));
-          if (!isNaN(w) && w > 0) cart[inc] += w;
+          if (!isNaN(w) && w > 0) cart[inc] = safeQty(cart[inc]) + w;
         }
       } else {
-        if ((cart[inc] || 0) < p.stock) cart[inc]++;
+        const current = Math.floor(safeQty(cart[inc]));
+        if (current < (p.stock || 0)) cart[inc] = current + 1;
       }
     }
-    
+
     if (dec) {
-      const p = data.products.find((x) => x.id === dec);
+      const p = getProductById(dec);
+      if (!p) return;
+
       if (p.isWeight) {
         delete cart[dec];
       } else {
-        cart[dec] = (cart[dec] || 0) - 1;
+        const current = Math.floor(safeQty(cart[dec]));
+        cart[dec] = current - 1;
         if (cart[dec] <= 0) delete cart[dec];
       }
     }
@@ -387,5 +537,6 @@
   // 6. INICIALIZACIÓN
   // ==========================================
   $("today").textContent = new Date().toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" });
+  setRangeInputs(summaryRange);
   loadData();
 })();

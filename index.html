@@ -108,15 +108,24 @@
 
     <!-- RESUMEN -->
     <section id="tab-resumen" class="hidden">
+      <div class="card">
+        <strong>Filtro de resumen</strong>
+        <div class="row" style="margin-top:10px">
+          <div><label for="summary-from">Desde</label><input type="date" id="summary-from"></div>
+          <div><label for="summary-to">Hasta</label><input type="date" id="summary-to"></div>
+          <button id="apply-summary">Aplicar</button>
+          <button id="export-csv">Exportar CSV</button>
+        </div>
+      </div>
       <div class="stats">
-        <div class="stat"><div class="muted">Ventas hoy</div><div class="big" id="s-sales">$0</div></div>
+        <div class="stat"><div class="muted">Ventas</div><div class="big" id="s-sales">$0</div></div>
         <div class="stat"><div class="muted">Tickets</div><div class="big" id="s-count">0</div></div>
         <div class="stat"><div class="muted">Ganancia bruta</div><div class="big" id="s-profit">$0</div></div>
-        <div class="stat"><div class="muted">Gastos hoy</div><div class="big" id="s-exp">$0</div></div>
-        <div class="stat"><div class="muted">Neto del día</div><div class="big" id="s-net">$0</div></div>
+        <div class="stat"><div class="muted">Gastos</div><div class="big" id="s-exp">$0</div></div>
+        <div class="stat"><div class="muted">Neto</div><div class="big" id="s-net">$0</div></div>
       </div>
       <div class="card" style="margin-top:14px">
-        <strong>Por medio de pago (hoy)</strong>
+        <strong>Por medio de pago</strong>
         <table><tbody id="pay-body"></tbody></table>
       </div>
       <div class="card">
