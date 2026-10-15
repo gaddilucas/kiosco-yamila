@@ -298,3 +298,29 @@ h4 { margin: 14px 0 6px; }
   font-weight: 600;
   cursor: pointer;
 }
+
+/* ---------- Botones + y − del carrito ---------- */
+.ajuste {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.btn-mini {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: var(--primario);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+.cantidad-ticket {
+  min-width: 48px;
+  text-align: center;
+  font-weight: 600;
+}

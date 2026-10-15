@@ -126,6 +126,23 @@ export function quitarDelCarrito(uid) {
   if (i !== -1) carrito.splice(i, 1);
   notificar();
 }
+// Suma (direccion = 1) o resta (direccion = -1) un paso al item del carrito.
+// Por kilo el paso es 0,1 kg (100 g); por unidad, 1. Si llega a cero, se quita.
+export function cambiarCantidad(uid, direccion) {
+  const item = carrito.find(i => i.uid === uid);
+  if (!item) return;
+
+  const paso = item.tipo === 'kg' ? 0.1 : 1;
+  const nueva = Math.round((item.cantidad + direccion * paso) * 1000) / 1000;
+
+  if (nueva <= 0) {
+    quitarDelCarrito(uid);
+    return;
+  }
+  item.cantidad = nueva;
+  item.subtotal = redondear(item.precio * nueva);
+  notificar();
+}
 
 export function vaciarCarrito() {
   carrito.length = 0;
@@ -287,8 +304,53 @@ export function resumen() {
     cantidadHoy: cobradasHoy.length,
     ticketPromedio: cobradasHoy.length ? Math.round(totalHoy / cobradasHoy.length) : 0,
     fiadoHoy: ventasHoy.filter(v => v.medioPago === 'cc').reduce((s, v) => s + v.total, 0),
-    totalHistorico: datos.ventas.reduce((s, v) => s + v.total, 0),
+    
     deudaCC: datos.clientesCC.reduce((s, c) => s + Math.max(saldoCliente(c), 0), 0),
     ranking: rankingProductos().slice(0, 5),
+  };
+}
+// ---------- Resumen mensual ----------
+// mes en formato AAAA-MM. Por defecto, el mes actual.
+export function ventasDelMes(mes = diaLocal(new Date()).slice(0, 7)) {
+  return datos.ventas
+    .filter(v => diaLocal(v.fecha).startsWith(mes))
+    .sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+}
+
+// Mismo criterio que rankingProductos, pero sobre una lista de ventas
+function rankingDe(ventas) {
+  const mapa = new Map();
+  ventas.forEach(v => v.items.forEach(i => {
+    const clave = i.id ?? `nombre:${i.nombre}`;
+    const r = mapa.get(clave) || { id: i.id, nombre: i.nombre, cantidad: 0, total: 0 };
+    r.cantidad++;
+    r.total += i.subtotal;
+    mapa.set(clave, r);
+  }));
+  return [...mapa.values()].sort((a, b) => b.cantidad - a.cantidad || b.total - a.total);
+}
+
+export function resumenMes(mes = diaLocal(new Date()).slice(0, 7)) {
+  const ventas = ventasDelMes(mes);
+  const cobradas = ventas.filter(v => v.medioPago !== 'cc');
+  const ventasCobradas = cobradas.reduce((s, v) => s + v.total, 0);
+
+  // Pagos que hicieron los clientes para regularizar su cuenta corriente en el mes
+  const pagosCC = datos.clientesCC
+    .flatMap(c => c.movimientos)
+    .filter(m => m.tipo === 'pago' && diaLocal(m.fecha).startsWith(mes))
+    .reduce((s, m) => s + m.monto, 0);
+
+  const totalCobrado = ventasCobradas + pagosCC;
+
+  return {
+    mes,
+    totalCobrado,
+    ventasCobradas,
+    pagosCC,
+    cantidadCobradas: cobradas.length,
+    ticketPromedio: cobradas.length ? Math.round(ventasCobradas / cobradas.length) : 0,
+    fiado: ventas.filter(v => v.medioPago === 'cc').reduce((s, v) => s + v.total, 0),
+    ranking: rankingDe(ventas).slice(0, 5),
   };
 }

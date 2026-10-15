@@ -83,6 +83,7 @@ function onClick(e) {
 function renderResumen() {
   if (!raiz) return;
   const r = store.resumen();
+  const mes = store.resumenMes();
 
   raiz.querySelector('#r-stats').innerHTML = `
     <div class="cards">
@@ -91,7 +92,7 @@ function renderResumen() {
       <div class="card-stat"><span>Ticket promedio</span><strong>${pesos(r.ticketPromedio)}</strong></div>
       <div class="card-stat"><span>Fiado hoy (CC)</span><strong>${pesos(r.fiadoHoy)}</strong></div>
       <div class="card-stat"><span>Deuda total CC</span><strong class="deuda">${pesos(r.deudaCC)}</strong></div>
-      <div class="card-stat"><span>Histórico</span><strong>${pesos(r.totalHistorico)}</strong></div>
+      <div class="card-stat"><span>Mes ${nombreMes(mes.mes)}</span><strong>${pesos(mes.totalCobrado)}</strong></div>
     </div>`;
 
   raiz.querySelector('#r-ventas').innerHTML =
@@ -115,6 +116,12 @@ function filaVenta(v) {
       <span><strong>${pesos(v.total)}</strong> <span class="pago">${detalle}</span></span>
       <small>${fechaHora(v.fecha)}</small>
     </li>`;
+}
+// "2026-10" -> "octubre 2026"
+function nombreMes(mes) {
+  const [anio, numero] = mes.split('-');
+  return new Date(Number(anio), Number(numero) - 1, 1)
+    .toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
 }
 
 function nombreCliente(id) {

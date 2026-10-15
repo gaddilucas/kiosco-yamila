@@ -59,15 +59,26 @@ export function iniciarVentas(contenedor) {
       <div class="rapidos">
         ${KILOS_RAPIDOS.map(k => `<button class="btn-secundario" data-kg="${k}">${formatoKg(k)} kg</button>`).join('')}
       </div>
+      <      <div class="cantidad-kg">
+        <label>
+          <input id="v-kg-cant-kg" type="number" min="0" step="1" value="0" inputmode="numeric">
+          kg
+        </label>
+        <label>
+          <input id="v-kg-cant-g" type="number" min="0" max="999" step="50" value="0" inputmode="numeric">
+          gramos
+        </label>
+      </div>
       <div class="fila">
-        <input id="v-kg-cant" type="text" inputmode="decimal" placeholder="Otro peso, ej. 0,35">
         <button id="v-kg-agregar" class="btn-primario">Agregar</button>
       </div>
-      <p id="v-kg-subtotal" class="ok"></p>
+
+          <p id="v-kg-subtotal" class="ok"></p>
       <p id="v-kg-error" class="deuda"></p>
       <button id="v-kg-cerrar" class="btn-secundario">Cancelar</button>
     </dialog>
   `;
+
 
   raiz.addEventListener('click', onClick);
 
@@ -89,18 +100,20 @@ export function iniciarVentas(contenedor) {
   dialogo.querySelectorAll('[data-kg]').forEach(b =>
     b.addEventListener('click', () => sumarKg(Number(b.dataset.kg)))
   );
-  raiz.querySelector('#v-kg-cant').addEventListener('input', actualizarSubtotalKg);
-  raiz.querySelector('#v-kg-cant').addEventListener('keydown', e => {
-    if (e.key === 'Enter') sumarKgEscrito();
+  raiz.querySelector('#v-kg-cant-kg').addEventListener('input', actualizarSubtotalKg);
+  raiz.querySelector('#v-kg-cant-g').addEventListener('input', actualizarSubtotalKg);
+  [raiz.querySelector('#v-kg-cant-kg'), raiz.querySelector('#v-kg-cant-g')].forEach(input => {
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') sumarKgEscrito();
+    });
   });
   raiz.querySelector('#v-kg-agregar').addEventListener('click', sumarKgEscrito);
   raiz.querySelector('#v-kg-cerrar').addEventListener('click', () => dialogo.close());
   dialogo.addEventListener('close', () => { productoKg = null; });
 
-  store.suscribir(renderVentas);
+    store.suscribir(renderVentas);
   renderVentas();
 }
-
 function onClick(e) {
   const btnProducto = e.target.closest('[data-producto]');
   if (btnProducto) {
@@ -109,6 +122,17 @@ function onClick(e) {
     limpiarBusqueda();
     if (producto.tipo === 'kg') abrirKg(producto);
     else store.agregarAlCarrito(producto, 1);
+    return;
+  }
+  const btnMas = e.target.closest('[data-mas]');
+  if (btnMas) {
+    store.cambiarCantidad(Number(btnMas.dataset.mas), 1);
+    return;
+  }
+
+  const btnMenos = e.target.closest('[data-menos]');
+  if (btnMenos) {
+    store.cambiarCantidad(Number(btnMenos.dataset.menos), -1);
     return;
   }
 
@@ -177,11 +201,18 @@ async function cobrar() {
 }
 
 // ---------- Productos por kilo ----------
+function leerKgDesdeInputs() {
+  const kg = Math.max(0, parseInt(raiz.querySelector('#v-kg-cant-kg').value, 10) || 0);
+  const g  = Math.min(999, Math.max(0, parseInt(raiz.querySelector('#v-kg-cant-g').value, 10) || 0));
+  return Number((kg + g / 1000).toFixed(3));
+}
+
 function abrirKg(producto) {
   productoKg = producto;
   raiz.querySelector('#v-kg-titulo').textContent = producto.nombre;
   raiz.querySelector('#v-kg-precio').textContent = `${pesos(producto.precio)} por kilo`;
-  raiz.querySelector('#v-kg-cant').value = '';
+  raiz.querySelector('#v-kg-cant-kg').value = 0;
+  raiz.querySelector('#v-kg-cant-g').value = 0;
   raiz.querySelector('#v-kg-subtotal').textContent = '';
   raiz.querySelector('#v-kg-error').textContent = '';
   raiz.querySelector('#v-kg').showModal();
@@ -194,18 +225,18 @@ function sumarKg(kilos) {
 }
 
 function sumarKgEscrito() {
-  const kilos = leerKilos(raiz.querySelector('#v-kg-cant').value);
-  if (!kilos) {
-    raiz.querySelector('#v-kg-error').textContent = 'Ingresá un peso válido, ej. 0,35';
+  const kilos = leerKgDesdeInputs();
+  if (kilos <= 0) {
+    raiz.querySelector('#v-kg-error').textContent = 'Ingresá al menos 1 g';
     return;
   }
   sumarKg(kilos);
 }
 
 function actualizarSubtotalKg() {
-  const kilos = leerKilos(raiz.querySelector('#v-kg-cant').value);
+  const kilos = leerKgDesdeInputs();
   raiz.querySelector('#v-kg-error').textContent = '';
-  raiz.querySelector('#v-kg-subtotal').textContent = kilos && productoKg
+  raiz.querySelector('#v-kg-subtotal').textContent = kilos > 0 && productoKg
     ? `${formatoKg(kilos)} kg = ${pesos(Math.round(productoKg.precio * kilos))}`
     : '';
 }
@@ -315,9 +346,15 @@ function filaTicket(i) {
   const detalle = i.tipo === 'kg'
     ? `<small>${formatoKg(i.cantidad)} kg × ${pesos(i.precio)}</small>`
     : '';
+  const cantidadTexto = i.tipo === 'kg' ? `${formatoKg(i.cantidad)} kg` : i.cantidad;
   return `
     <li>
       <span>${esc(i.nombre)} ${detalle}</span>
+      <span class="ajuste">
+        <button class="btn-mini" data-menos="${i.uid}" aria-label="Restar">−</button>
+        <span class="cantidad-ticket">${cantidadTexto}</span>
+        <button class="btn-mini" data-mas="${i.uid}" aria-label="Sumar">+</button>
+      </span>
       <span>${pesos(i.subtotal)}</span>
       <button class="quitar" data-quitar="${i.uid}" aria-label="Quitar">✕</button>
     </li>`;
